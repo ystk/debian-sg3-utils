@@ -1,0 +1,85 @@
+Man page fixes
+Index: sg3-utils/doc/sg_format.8
+===================================================================
+--- sg3-utils.orig/doc/sg_format.8	2010-04-13 10:38:58.011174821 +0530
++++ sg3-utils/doc/sg_format.8	2010-04-13 10:45:40.171176638 +0530
+@@ -38,7 +38,7 @@
+ to detect a "format corrupt" state (see NOTES section). This usage will not
+ modify the disk.
+ .PP
+-When this utility is used with the "--format" (or "-F") option it will attempt
++When this utility is used with the "\-\-format" (or "\-F") option it will attempt
+ to format the given DEVICE. There is a 10 second pause during which time the
+ user is invited (twice 5 seconds apart) to abort sg_format. This occurs just
+ prior the SCSI FORMAT UNIT command being issued. See the NOTES section for
+@@ -130,8 +130,8 @@
+ The default value is 0. The FMTPINFO field from SBC\-3 revision 16 is a 2
+ bit field (bits 7 and 6 of byte 1 in the cdb). Prior to that it was a single
+ bit field (bit 7 of byte 1 in the cdb) and there was an accompanying bit
+-called RTO_REQ (bit 6 of byte 1 in the cdb). The deprecated options "--pinfo"
+-and "--rto-req" represent the older usage. This option should be used in
++called RTO_REQ (bit 6 of byte 1 in the cdb). The deprecated options "\-\-pinfo"
++and "\-\-rto\-req" represent the older usage. This option should be used in
+ their place. This option has no action unless \fI\-\-format\fR is given.
+ .TP
+ \fB\-F\fR, \fB\-\-format\fR
+@@ -154,7 +154,7 @@
+ the "longlba" flag in the MODE SENSE (10) command and uses READ CAPACITY (16)
+ rather than READ CAPACITY (10). This option does not set the LONGLIST bit
+ in the FORMAT UNIT command. The LONGLIST bit is set as required depending
+-other parameters (e.g. when '--pie=PIE' is greater than zero).
++other parameters (e.g. when '\-\-pie=PIE' is greater than zero).
+ .TP
+ \fB\-P\fR, \fB\-\-pfu\fR=\fIPFU\fR
+ sets the "Protection Field Usage" field in the parameter block associated
+Index: sg3-utils/doc/sg_read_block_limits.8
+===================================================================
+--- sg3-utils.orig/doc/sg_read_block_limits.8	2010-04-13 10:38:58.042176148 +0530
++++ sg3-utils/doc/sg_read_block_limits.8	2010-04-13 10:45:40.171176638 +0530
+@@ -1,6 +1,6 @@
+ .TH SG_READ_BLOCK_LIMITS "8" "June 2009" "sg3_utils\-1.28" SG3_UTILS
+ .SH NAME
+-sg_read_block limits \- sends a SCSI READ BLOCK LIMITS command
++sg_read_block, limits \- sends a SCSI READ BLOCK LIMITS command
+ .SH SYNOPSIS
+ .B sg_read_block_limits
+ [\fI\-\-help\fR] [\fI\-\-hex\fR] [\fI\-\-raw\fR] [\fI\-\-verbose\fR]
+Index: sg3-utils/doc/sg_readcap.8
+===================================================================
+--- sg3-utils.orig/doc/sg_readcap.8	2010-04-13 10:38:58.019175101 +0530
++++ sg3-utils/doc/sg_readcap.8	2010-04-13 10:45:40.171176638 +0530
+@@ -75,7 +75,7 @@
+ of 0xffffffff is returned (if the device complies with SBC\-2).
+ .TP
+ \fB\-\-16\fR
+-Use the 16 byte cdb variant of the READ CAPACITY command. See the '--long'
++Use the 16 byte cdb variant of the READ CAPACITY command. See the '\-\-long'
+ option.
+ .TP
+ \fB\-O\fR, \fB\-\-old\fR
+Index: sg3-utils/doc/sg_wr_mode.8
+===================================================================
+--- sg3-utils.orig/doc/sg_wr_mode.8	2010-04-13 10:38:58.026174682 +0530
++++ sg3-utils/doc/sg_wr_mode.8	2010-04-13 10:45:40.172176219 +0530
+@@ -130,7 +130,7 @@
+ do that and if some part is not changeable then it should
+ report: "Invalid field in parameter list".
+ .PP
+-Some mode pages are not savable. If so an attempt to use the \fI\-\-save\fR
++Some mode pages are not saveable. If so an attempt to use the \fI\-\-save\fR
+ option should cause an error to be reported from the device: "Illegal field
+ in cdb".
+ .PP
+Index: sg3-utils/doc/sginfo.8
+===================================================================
+--- sg3-utils.orig/doc/sginfo.8	2010-04-13 10:38:58.034175799 +0530
++++ sg3-utils/doc/sginfo.8	2010-04-13 10:45:40.172176219 +0530
+@@ -156,7 +156,7 @@
+ .TP
+ \fB\-u\fR \fIPN\fR[,\fISPN\fR]
+ Display information from mode page number \fIPN\fR (and optionally \fISPN\fR)
+-in hex form. \fIPN\f is a mode page number in a decimal number from 0 to 63
++in hex form. \fIPN\fR is a mode page number in a decimal number from 0 to 63
+ inclusive. \fISPN\fR is the mode subpage number and is assumed to be 0 if
+ not given. \fISPN\fR is a decimal number from 1 to 255 inclusive. A page
+ number of 63 returns all pages supported by the device in ascending order
