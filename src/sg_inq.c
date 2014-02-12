@@ -1,3 +1,20 @@
+/* A utility program originally written for the Linux OS SCSI subsystem.
+*  Copyright (C) 2000-2011 D. Gilbert
+*  This program is free software; you can redistribute it and/or modify
+*  it under the terms of the GNU General Public License as published by
+*  the Free Software Foundation; either version 2, or (at your option)
+*  any later version.
+
+   This program outputs information provided by a SCSI INQUIRY command.
+   It is mainly based on the SCSI SPC-4 document at http://www.t10.org .
+
+   Acknowledgment:
+      - Martin Schwenke <martin at meltin dot net> added the raw switch and
+        other improvements [20020814]
+      - Lars Marowsky-Bree <lmb at suse dot de> contributed Unit Path Report
+        VPD page decoding for EMC CLARiiON devices [20041016]
+*/
+
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -21,23 +38,6 @@
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
-
-/* A utility program originally written for the Linux OS SCSI subsystem.
-*  Copyright (C) 2000-2010 D. Gilbert
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-
-   This program outputs information provided by a SCSI INQUIRY command.
-   It is mainly based on the SCSI SPC-4 document at http://www.t10.org .
-
-   Acknowledgment:
-      - Martin Schwenke <martin at meltin dot net> added the raw switch and
-        other improvements [20020814]
-      - Lars Marowsky-Bree <lmb at suse dot de> contributed Unit Path Report
-        VPD page decoding for EMC CLARiiON devices [20041016]
-*/
 
 /* INQUIRY notes:
  * It is recommended that the initial allocation length given to a
@@ -66,7 +66,7 @@
  * information [MAINTENANCE IN, service action = 0xc]; see sg_opcodes.
  */
 
-static char * version_str = "0.88 20100331";    /* SPC-4 rev 23 */
+static char * version_str = "1.03 20111113";    /* SPC-4 rev 33 */
 
 
 #define VPD_SUPPORTED_VPDS 0x0
@@ -79,11 +79,15 @@ static char * version_str = "0.88 20100331";    /* SPC-4 rev 23 */
 #define VPD_SCSI_PORTS  0x88
 #define VPD_ATA_INFO  0x89
 #define VPD_POWER_CONDITION  0x8a
+#define VPD_DEVICE_CONSTITUENTS 0x8b
+#define VPD_CFA_PROFILE_INFO  0x8c
+#define VPD_POWER_CONSUMPTION  0x8d
 #define VPD_PROTO_LU 0x90
 #define VPD_PROTO_PORT 0x91
 #define VPD_BLOCK_LIMITS 0xb0
 #define VPD_BLOCK_DEV_CHARS 0xb1
-#define VPD_THIN_PROVISIONING 0xb2
+#define VPD_MAN_ASS_SN 0xb1 
+#define VPD_LB_PROVISIONING 0xb2
 #define VPD_REFERRALS 0xb3
 #define VPD_UPR_EMC 0xc0
 #define VPD_RDAC_VERS 0xc2
@@ -133,6 +137,7 @@ static struct svpd_values_name_t vpd_pg[] = {
     {VPD_BLOCK_DEV_CHARS, 0, 0, 0, "bdc",
      "Block device characteristics (SBC)"},
     {VPD_BLOCK_LIMITS, 0, 0, 0, "bl", "Block limits (SBC)"},
+    {VPD_REFERRALS, 0, 0, 0, "ref", "Referrals (SBC)"},
     {VPD_DEVICE_ID, 0, -1, 0, "di", "Device identification"},
 #if 0
     {VPD_DEVICE_ID, VPD_DI_SEL_AS_IS, -1, 0, "di_asis", "Like 'di' "
@@ -147,7 +152,10 @@ static struct svpd_values_name_t vpd_pg[] = {
     {VPD_EXT_INQ, 0, -1, 0, "ei", "Extended inquiry data"},
     {VPD_MAN_NET_ADDR, 0, -1, 0, "mna", "Management network addresses"},
     {VPD_MODE_PG_POLICY, 0, -1, 0, "mpp", "Mode page policy"},
+    {VPD_LB_PROVISIONING, 0, 0, 0, "lbpv", "Logical block provisioning "
+     "(SBC)"},
     {VPD_POWER_CONDITION, 0, -1, 0, "po", "Power condition"},
+    {VPD_POWER_CONSUMPTION, 0, -1, 0, "psm", "Power consumption"},
     {VPD_PROTO_LU, 0, 0x0, 0, "pslu", "Protocol-specific logical unit "
      "information"},
     {VPD_PROTO_PORT, 0, 0x0, 0, "pspo", "Protocol-specific port information"},
@@ -157,7 +165,6 @@ static struct svpd_values_name_t vpd_pg[] = {
     {VPD_SUPPORTED_VPDS, 0, -1, 0, "sv", "Supported VPD pages"},
     {VPD_RDAC_VAC, 0, -1, 1, "rdac_vac", "RDAC volume access control (IBM)"},
     {VPD_RDAC_VERS, 0, -1, 1, "rdac_vers", "RDAC software version (IBM)"},
-    {VPD_THIN_PROVISIONING, 0, 0, 0, "thp", "Thin provisioning (SBC)"},
     {VPD_UPR_EMC, 0, -1, 1, "upr", "Unit path report (EMC)"},
     {0, 0, 0, 0, NULL, NULL},
 };
@@ -251,10 +258,12 @@ usage()
             "    --raw|-r        output response in binary (to stdout)\n"
             "    --verbose|-v    increase verbosity\n"
             "    --version|-V    print version string then exit\n"
-            "    --vpd|-e        vital product data (set page with\n"
-            "                    '--page=PG')\n\n"
-            "Performs a SCSI INQUIRY command.\n"
-            "If no options given then does a 'standard' INQUIRY.\n");
+            "    --vpd|-e        vital product data (set page with "
+            "'--page=PG')\n\n"
+            "Performs a SCSI INQUIRY command. "
+            "If no options given then does a\n'standard' INQUIRY. Can list "
+            "VPD pages with '--vpd' or '--page=PG'\noption. The sg_vpd "
+            "utility has a more up to date list of VPD pages.\n");
 }
 
 static void
@@ -321,6 +330,8 @@ usage_for(const struct opts_t * optsp)
         usage_old();
 }
 
+/* Processes command line options according to new option format. Returns
+ * 0 is ok, else SG_LIB_SYNTAX_ERROR is returned. */
 static int
 process_cl_new(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -426,6 +437,8 @@ process_cl_new(struct opts_t * optsp, int argc, char * argv[])
     return 0;
 }
 
+/* Processes command line options according to old option format. Returns
+ * 0 is ok, else SG_LIB_SYNTAX_ERROR is returned. */
 static int
 process_cl_old(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -577,6 +590,12 @@ process_cl_old(struct opts_t * optsp, int argc, char * argv[])
     return 0;
 }
 
+/* Process command line options. First check using new option format unless
+ * the SG3_UTILS_OLD_OPTS environment variable is defined which causes the
+ * old option format to be checked first. Both new and old format can be
+ * countermanded by a '-O' and '-N' options respectively. As soon as either
+ * of these options is detected (when processing the other format), processing
+ * stops and is restarted using the other format. Clear? */
 static int
 process_cl(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -637,9 +656,10 @@ struct vpd_name {
     char * name;
 };
 
+/* In numerical order */
 static struct vpd_name vpd_name_arr[] = {
-    {VPD_SUPPORTED_VPDS, 0, "Supported VPD pages"},
-    {VPD_UNIT_SERIAL_NUM, 0, "Unit serial number"},
+    {VPD_SUPPORTED_VPDS, 0, "Supported VPD pages"},             /* 0x0 */
+    {VPD_UNIT_SERIAL_NUM, 0, "Unit serial number"},             /* 0x80 */
     {0x81, 0, "Implemented operating definitions (obsolete)"},
     {0x82, 0, "ASCII implemented operating definition (obsolete)"},
     {VPD_DEVICE_ID, 0, "Device identification"},
@@ -650,13 +670,19 @@ static struct vpd_name vpd_name_arr[] = {
     {VPD_SCSI_PORTS, 0, "SCSI ports"},
     {VPD_ATA_INFO, 0, "ATA information"},
     {VPD_POWER_CONDITION, 0, "Power condition"},
-    {VPD_BLOCK_LIMITS, 0, "Block limits (sbc2)"},
+    {VPD_DEVICE_CONSTITUENTS, 0, "Device constituents"},
+    {VPD_CFA_PROFILE_INFO, 0, "CFA profile information"},       /* 0x8c */
+    {VPD_POWER_CONSUMPTION, 0, "Power consumption"},            /* 0x8d */
+    /* 0xb0 to 0xbf are per peripheral device type */
+    {VPD_BLOCK_LIMITS, 0, "Block limits (sbc2)"},               /* 0xb0 */
     {VPD_BLOCK_DEV_CHARS, 0, "Block device characteristics (sbc3)"},
-    {VPD_THIN_PROVISIONING, 0, "Thin provisioning (sbc3)"},
+    {VPD_LB_PROVISIONING, 0, "Logical block provisioning (sbc3)"},
+    {VPD_REFERRALS, 0, "Referrals (sbc3)"},
     {0xb0, PDT_TAPE, "Sequential access device capabilities (ssc3)"},
     {0xb2, PDT_TAPE, "TapeAlert supported flags (ssc3)"},
     {0xb0, PDT_OSD, "OSD information (osd)"},
     {0xb1, PDT_OSD, "Security token (osd)"},
+    /* 0xc0 to 0xff are vendor specific */
     {0xc0, 0, "vendor: Firmware numbers (seagate); Unit path report (EMC)"},
     {0xc1, 0, "vendor: Date code (seagate)"},
     {0xc2, 0, "vendor: Jumper settings (seagate); Software version (RDAC)"},
@@ -739,6 +765,7 @@ static const char * network_service_type_arr[] =
     "reserved[0x1e]", "reserved[0x1f]",
 };
 
+/* VPD_MAN_NET_ADDR */
 static void
 decode_net_man_vpd(unsigned char * buff, int len, int do_hex)
 {
@@ -781,6 +808,7 @@ static const char * mode_page_policy_arr[] =
     "per I_T nexus",
 };
 
+/* VPD_MODE_PG_POLICY */
 static void
 decode_mode_policy_vpd(unsigned char * buff, int len, int do_hex)
 {
@@ -815,6 +843,7 @@ decode_mode_policy_vpd(unsigned char * buff, int len, int do_hex)
     }
 }
 
+/* VPD_SCSI_PORTS */
 static void
 decode_scsi_ports_vpd(unsigned char * buff, int len, int do_hex)
 {
@@ -888,7 +917,7 @@ static const char * desig_type_arr[] =
     "Reserved [0xc]", "Reserved [0xd]", "Reserved [0xe]", "Reserved [0xf]",
 };
 
-/* These are target port, device server (i.e. target) and lu identifiers */
+/* These are target port, device server (i.e. target) and LU identifiers */
 static void
 decode_dev_ids(const char * leadin, unsigned char * buff, int len, int do_hex)
 {
@@ -1259,6 +1288,7 @@ decode_transport_id(const char * leadin, unsigned char * ucp, int len)
     }
 }
 
+/* VPD_EXT_INQ   Extended Inquiry */
 static void
 decode_x_inq_vpd(unsigned char * buff, int len, int do_hex)
 {
@@ -1281,11 +1311,17 @@ decode_x_inq_vpd(unsigned char * buff, int len, int do_hex)
     printf("  WU_SUP=%d CRD_SUP=%d NV_SUP=%d V_SUP=%d\n",
            !!(buff[6] & 0x8), !!(buff[6] & 0x4), !!(buff[6] & 0x2),
            !!(buff[6] & 0x1));
-    printf("  P_I_I_SUP=%d LUICLR=%d CBCS=%d\n",
-           !!(buff[7] & 0x10), !!(buff[7] & 0x1), !!(buff[8] & 0x1));
+    printf("  P_I_I_SUP=%d LUICLR=%d CBCS=%d R_SUP=%d\n",
+           !!(buff[7] & 0x10), !!(buff[7] & 0x1), !!(buff[8] & 0x1),
+           !!(buff[8] & 0x10));
     printf("  Multi I_T nexus microcode download=%d\n", buff[9] & 0xf);
+    printf("  Extended self-test completion minutes=%d\n",
+           (buff[10] << 8) + buff[11]);     /* spc4r27 */
+    printf("  POA_SUP=%d HRA_SUP=%d VSA_SUP=%d\n",      /* spc4r32 */
+           !!(buff[12] & 0x80), !!(buff[12] & 0x40), !!(buff[12] & 0x20));
 }
 
+/* VPD_SOFTW_INF_ID */
 static void
 decode_softw_inf_id(unsigned char * buff, int len, int do_hex)
 {
@@ -1305,6 +1341,7 @@ decode_softw_inf_id(unsigned char * buff, int len, int do_hex)
     }
 }
 
+/* VPD_ATA_INFO */
 static void
 decode_ata_info_vpd(unsigned char * buff, int len, int do_hex)
 {
@@ -1364,6 +1401,7 @@ decode_ata_info_vpd(unsigned char * buff, int len, int do_hex)
                  sg_is_big_endian());
 }
 
+/* VPD_POWER_CONDITION */
 static void
 decode_power_condition(unsigned char * buff, int len, int do_hex)
 {
@@ -1455,6 +1493,8 @@ decode_b0_vpd(unsigned char * buff, int len, int do_hex, int pdt)
     }
 }
 
+/* VPD_BLOCK_DEV_CHARS sbc */
+/* VPD_MAN_ASS_SN ssc */
 static void
 decode_b1_vpd(unsigned char * buff, int len, int do_hex, int pdt)
 {
@@ -1484,6 +1524,38 @@ decode_b1_vpd(unsigned char * buff, int len, int do_hex, int pdt)
         case PDT_TAPE: case PDT_MCHANGER: case PDT_ADC:
             printf("  Manufacturer-assigned serial number: %.*s\n",
                    len - 4, buff + 4);
+            break;
+        default:
+            printf("  Unable to decode pdt=0x%x, in hex:\n", pdt);
+            dStrHex((const char *)buff, len, 0);
+            break;
+    }
+}
+
+/* VPD_REFERRALS sbc */
+static void
+decode_b3_vpd(unsigned char * buff, int len, int do_hex, int pdt)
+{
+    unsigned int s, m;
+
+    if (do_hex) {
+        dStrHex((const char *)buff, len, 0);
+        return;
+    }
+    switch (pdt) {
+        case PDT_DISK: case PDT_WO: case PDT_OPTICAL:
+            if (len < 0xc0) {
+                fprintf(stderr, "Referrals VPD page length too short=%d\n", len);
+                return;
+            }
+            s = (buff[8] << 24) | (buff[9] << 16) | (buff[10] << 8) | buff[11];
+            m = (buff[12] << 24) | (buff[13] << 16) | (buff[14] << 8) | buff[15];
+            if (0 == s)
+                printf("  Single user data segment\n");
+            else if (0 == m)
+                printf("  Segment size specified by user data segment descriptor\n");
+            else
+                printf("  Segment size: %u, segment multiplier: %u\n", s, m);
             break;
         default:
             printf("  Unable to decode pdt=0x%x, in hex:\n", pdt);
@@ -1536,7 +1608,7 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
     }
     printf("  LUN WWN: ");
     for (k = 0; k < 16; ++k)
-        printf("%02hhx", buff[10 + k]);
+        printf("%02x", buff[10 + k]);
     printf("\n");
     printf("  Array Serial Number: ");
     dStrRaw((const char *)&buff[50], buff[49]);
@@ -1544,20 +1616,20 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
 
     printf("  LUN State: ");
     if (buff[4] > 0x02)
-           printf("Unknown (%hhx)\n", buff[4]);
+           printf("Unknown (%x)\n", buff[4]);
     else
            printf("%s\n", lun_state_arr[buff[4]]);
 
     printf("  This path connects to: ");
     if (buff[8] > 0x01)
-           printf("Unknown SP (%hhx)", buff[8]);
+           printf("Unknown SP (%x)", buff[8]);
     else
            printf("%s", sp_arr[buff[8]]);
     printf(", Port Number: %u\n", buff[7]);
 
     printf("  Default Owner: ");
     if (buff[5] > 0x01)
-           printf("Unknown (%hhx)\n", buff[5]);
+           printf("Unknown (%x)\n", buff[5]);
     else
            printf("%s\n", sp_arr[buff[5]]);
 
@@ -1574,7 +1646,7 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
     else {
         printf("  SP IPv6 address: ");
         for (k = 0; k < 16; ++k)
-            printf("%02hhx", buff[32 + k]);
+            printf("%02x", buff[32 + k]);
         printf("\n");
     }
 
@@ -1582,7 +1654,7 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
     vpp80 = buff[30] & 0x08;
     lun_z = buff[30] & 0x04;
 
-    printf("  System Type: %hhx, Failover mode: %s\n",
+    printf("  System Type: %x, Failover mode: %s\n",
                    buff[27],
                    failover_mode == 4 ? "Set to 1" : "Unknown");
 
@@ -1695,7 +1767,7 @@ fetch_unit_serial_num(int sg_fd, char * obuff, int obuff_len, int verbose)
                         "page\n");
             return SG_LIB_CAT_MALFORMED;
         }
-        len = b[3];
+        len = (b[2] << 8) + b[3];       /* spc4r25 */
         for (k = 0; k < len; ++k) {
             if (VPD_UNIT_SERIAL_NUM == b[k + 4])
                 break;
@@ -1704,7 +1776,7 @@ fetch_unit_serial_num(int sg_fd, char * obuff, int obuff_len, int verbose)
             res = sg_ll_inquiry(sg_fd, 0, 1, VPD_UNIT_SERIAL_NUM,
                                 b, sz, 0, verbose);
             if (0 == res) {
-                len = b[3];
+                len = (b[2] << 8) + b[3];       /* spc4r25 */
                 len = (len < (obuff_len - 1)) ? len : (obuff_len - 1);
                 if ((VPD_UNIT_SERIAL_NUM == b[1]) && (len > 0)) {
                     memcpy(obuff, b + 4, len);
@@ -1734,7 +1806,7 @@ extern const char * sg_ansi_version_arr[];
 static const char *
 get_ansi_version_str(int version, char * buff, int buff_len)
 {
-    version &= 0x7;
+    version &= 0xf;
     buff[buff_len - 1] = '\0';
     strncpy(buff, sg_ansi_version_arr[version], buff_len - 1);
     return buff;
@@ -1762,16 +1834,19 @@ process_std_inq(int sg_fd, const struct opts_t * optsp)
                 printf("standard INQUIRY:\n");
             else if (1 == pqual)
                 printf("standard INQUIRY: [qualifier indicates no connected "
-                       "lu]\n");
+                       "LU]\n");
             else if (3 == pqual)
                 printf("standard INQUIRY: [qualifier indicates not capable "
-                       "of supporting lu]\n");
+                       "of supporting LU]\n");
             else
                 printf("standard INQUIRY: [reserved or vendor specific "
-                       "qualifier [%d]\n", pqual);
+                       "qualifier [%d]]\n", pqual);
         }
         len = rsp_buff[4] + 5;
-        ansi_version = rsp_buff[2] & 0x7;
+        /* N.B. rsp_buff[2] full byte is 'version' in SPC-2,3,4 but in SPC
+         * [spc-r11a (1997)] bits 6,7: ISO/IEC version; bits 3-5: ECMA
+         * version; bits 0-2: SCSI version */
+        ansi_version = rsp_buff[2] & 0x7;       /* Only take SCSI version */
         peri_type = rsp_buff[0] & 0x1f;
         if ((len > SAFE_STD_INQ_RESP_LEN) && (len < 256) &&
             (0 == optsp->resp_len)) {
@@ -2124,7 +2199,7 @@ decode_vpd(int sg_fd, const struct opts_t * optsp)
         res = sg_ll_inquiry(sg_fd, 0, 1, VPD_UNIT_SERIAL_NUM, rsp_buff,
                             DEF_ALLOC_LEN, 1, optsp->do_verbose);
         if (0 == res) {
-            len = rsp_buff[3] + 4;
+            len = ((rsp_buff[2] << 8) + rsp_buff[3]) + 4; /* spc4r25 */
             if (VPD_UNIT_SERIAL_NUM != rsp_buff[1]) {
                 fprintf(stderr, "invalid VPD response; probably a STANDARD "
                         "INQUIRY response\n");
@@ -2179,7 +2254,7 @@ decode_vpd(int sg_fd, const struct opts_t * optsp)
         res = sg_ll_inquiry(sg_fd, 0, 1, VPD_SOFTW_INF_ID, rsp_buff,
                             DEF_ALLOC_LEN, 1, optsp->do_verbose);
         if (0 == res) {
-            len = rsp_buff[3] + 4;
+            len = ((rsp_buff[2] << 8) + rsp_buff[3]) + 4; /* spc4r25 */
             if (VPD_SOFTW_INF_ID != rsp_buff[1]) {
                 fprintf(stderr, "invalid VPD response; probably a STANDARD "
                         "INQUIRY response\n");
@@ -2330,7 +2405,7 @@ decode_vpd(int sg_fd, const struct opts_t * optsp)
                 decode_power_condition(rsp_buff, len, optsp->do_hex);
         }
         break;
-    case 0xb0:  /* could be BLOCK LIMITS but need to know pdt to find out */
+    case 0xb0:  /* VPD pages in B0h to BFh range depend on pdt */
         res = sg_ll_inquiry(sg_fd, 0, 1, 0xb0, rsp_buff,
                             DEF_ALLOC_LEN, 1, optsp->do_verbose);
         if (0 == res) {
@@ -2374,7 +2449,7 @@ decode_vpd(int sg_fd, const struct opts_t * optsp)
         } else if (! optsp->do_raw)
             printf("VPD INQUIRY: page=0xb0\n");
         break;
-    case 0xb1:  /* could be BLOCK DEVICE CHARACTERISTICS but need pdt */
+    case 0xb1:  /* VPD pages in B0h to BFh range depend on pdt */
         res = sg_ll_inquiry(sg_fd, 0, 1, 0xb1, rsp_buff,
                             DEF_ALLOC_LEN, 1, optsp->do_verbose);
         if (0 == res) {
@@ -2422,6 +2497,46 @@ decode_vpd(int sg_fd, const struct opts_t * optsp)
                 decode_b1_vpd(rsp_buff, len, optsp->do_hex, pdt);
         } else if (! optsp->do_raw)
             printf("VPD INQUIRY: page=0xb1\n");
+        break;
+    case 0xb2:  /* VPD pages in B0h to BFh range depend on pdt */
+        printf(" Only hex output supported. sg_vpd decodes the B2h page.\n");
+        return process_vpd(sg_fd, optsp);
+    case 0xb3:  /* VPD pages in B0h to BFh range depend on pdt */
+        res = sg_ll_inquiry(sg_fd, 0, 1, 0xb3, rsp_buff,
+                            DEF_ALLOC_LEN, 1, optsp->do_verbose);
+        if (0 == res) {
+            pdt = rsp_buff[0] & 0x1f;
+            if (! optsp->do_raw) {
+                switch (pdt) {
+                case PDT_DISK: case PDT_WO: case PDT_OPTICAL:
+                    printf("VPD INQUIRY: Referrals VPD page (SBC)\n");
+                    break;
+                default:
+                    printf("VPD INQUIRY: page=0x%x, pdt=0x%x\n", 0xb3, pdt);
+                    break;
+                }
+            }
+            len = ((rsp_buff[2] << 8) + rsp_buff[3]) + 4;
+            if (0xb3 != rsp_buff[1]) {
+                fprintf(stderr, "invalid VPD response; probably a STANDARD "
+                        "INQUIRY response\n");
+                return SG_LIB_CAT_MALFORMED;
+            }
+            if (len > MX_ALLOC_LEN) {
+                fprintf(stderr, "response length too long: %d > %d\n", len,
+                       MX_ALLOC_LEN);
+                return SG_LIB_CAT_MALFORMED;
+            } else if (len > DEF_ALLOC_LEN) {
+                if (sg_ll_inquiry(sg_fd, 0, 1, 0xb3, rsp_buff,
+                                  len, 1, optsp->do_verbose))
+                    return SG_LIB_CAT_OTHER;
+            }
+            if (optsp->do_raw)
+                dStrRaw((const char *)rsp_buff, len);
+            else
+                decode_b3_vpd(rsp_buff, len, optsp->do_hex, pdt);
+        } else if (! optsp->do_raw)
+            printf("VPD INQUIRY: page=0xb3\n");
         break;
     case VPD_UPR_EMC:   /* 0xc0 */
         if (!optsp->do_raw)

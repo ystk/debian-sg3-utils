@@ -48,10 +48,12 @@ REASSIGN BLOCKS     sg_reassign, ++
 RECEIVE DIAGNOSTIC  sg_senddiag, sg_ses, ++
 REPORT IDENTIFYING INFORMATION  sg_ident, ++ (2)
 REPORT LUNS         sg_luns, ++
+REPORT REFERRALS    sg_referrals, ++
 REPORT SUPPORTED OPERATION CODES              sg_opcodes
 REPORT SUPPORTED TASK MANAGEMENT FUNCTIONS    sg_opcodes
 REPORT TARGET PORT GROUPS       sg_rtpg, sg_stpg ++
 REQUEST SENSE       sg_requests, ++
+SANITIZE            sg_sanitize
 SEND DIAGNOSTIC     sg_senddiag, sg_ses, ++
 SET IDENTIFYING INFORMATION  sg_ident, ++ (3)
 SET TARGET PORT GROUPS       sg_stpg, ++
@@ -94,4 +96,4 @@ SMART READ DATA     examples/sg_sat_smart_rd_data
 
 
 Doug Gilbert
-20th September 2009
+21st June 2011
