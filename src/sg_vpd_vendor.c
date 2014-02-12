@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2010 Douglas Gilbert.
+ * Copyright (c) 2006-2011 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define __STDC_FORMAT_MACROS 1
+#include <inttypes.h>
 
 #ifndef SG_LIB_MINGW
 #include <time.h>
@@ -34,10 +36,14 @@
         VPD page decoding for EMC CLARiiON devices [20041016]
       - Hannes Reinecke <hare at suse dot de> contributed RDAC vendor
         specific VPD pages [20060421]
+      - Jonathan McDowell <noodles at hp dot com> contributed HP/3PAR InServ
+        VPD page [0xc0] containing volume information [20110922]
+
 */
 
 
 /* vendor VPD pages */
+#define VPD_V_HP3PAR 0xc0
 #define VPD_V_FIRM_SEA  0xc0
 #define VPD_V_UPR_EMC  0xc0
 #define VPD_V_DATC_SEA  0xc1
@@ -72,7 +78,7 @@ static unsigned char rsp_buff[MX_ALLOC_LEN + 2];
 
 
 /* Supported vendor specific VPD pages */
-/* 'subvalue' used to disambiguate, 'vendor' should be set */
+/* 'subvalue' used to disambiguate; 'vendor' flag should be set */
 /* Arrange in alphabetical order by acronym */
 static struct svpd_values_name_t vendor_vpd_pg[] = {
     {VPD_V_DATC_SEA, 0, -1, 1, "datc", "Date code (Seagate)"},
@@ -81,6 +87,7 @@ static struct svpd_values_name_t vendor_vpd_pg[] = {
      "(RDAC)"},
     {VPD_V_FEAT_RDAC, 1, -1, 1, "feat", "Feature Parameters (RDAC)"},
     {VPD_V_FIRM_SEA, 0, -1, 1, "firm", "Firmware numbers (Seagate)"},
+    {VPD_V_HP3PAR, 2, -1, 1, "hp3par", "Volume information (HP/3PAR)"},
     {VPD_V_JUMP_SEA, 0, -1, 1, "jump", "Jump setting (Seagate)"},
     {VPD_V_SUBS_RDAC, 0, -1, 1, "sub", "Subsystem identifier (RDAC)"},
     {VPD_V_SVER_RDAC, 1, -1, 1, "sver", "Software version (RDAC)"},
@@ -177,6 +184,81 @@ static const char * lun_op_arr[] =
 };
 
 static void
+decode_vpd_c0_hp3par(unsigned char * buff, int len)
+{
+    int rev;
+    long offset;
+
+    if (len < 24) {
+        fprintf(stderr, "HP/3PAR vendor specific VPD page length too "
+                "short=%d\n", len);
+        return;
+    }
+
+    rev = buff[4];
+    printf("  Page revision: %d\n", rev);
+
+    printf("  Volume type: %s\n", (buff[5] & 0x01) ? "tpvv" :
+            (buff[5] & 0x02) ? "snap" : "base");
+    printf("  Reclaim supported: %s\n", (buff[5] & 0x04) ? "yes" : "no");
+    printf("  ATS supported: %s\n", (buff[5] & 0x10) ? "yes" : "no");
+    printf("  XCopy supported: %s\n", (buff[5] & 0x20) ? "yes" : "no");
+
+    if (rev > 3) {
+        printf("  VV ID: %" PRIu64 "\n", ((uint64_t) buff[28] << 56) +
+                ((uint64_t) buff[29] << 48) + ((uint64_t) buff[30] << 40) +
+                ((uint64_t) buff[31] << 32) + ((uint64_t) buff[32] << 24) +
+                (buff[33] << 16) + (buff[34] << 8) + buff[35]);
+
+        offset = 44;
+        printf("  Volume name: %s\n", &buff[offset]);
+
+        printf("  Domain ID: %d\n", (buff[36] << 24) +  (buff[37] << 16) +
+                (buff[38] << 8) + buff[39]);
+
+        offset += (buff[offset - 4] << 24) + (buff[offset - 3] << 16) +
+                (buff[offset - 2] << 8) + buff[offset - 1] + 4;
+        printf("  Domain Name: %s\n", &buff[offset]);
+
+        offset += (buff[offset - 4] << 24) + (buff[offset - 3] << 16) +
+                (buff[offset - 2] << 8) + buff[offset - 1] + 4;
+        printf("  User CPG: %s\n", &buff[offset]);
+
+        offset += (buff[offset - 4] << 24) + (buff[offset - 3] << 16) +
+                (buff[offset - 2] << 8) + buff[offset - 1] + 4;
+        printf("  Snap CPG: %s\n", &buff[offset]);
+
+        offset += (buff[offset - 4] << 24) + (buff[offset - 3] << 16) +
+                (buff[offset - 2] << 8) + buff[offset - 1];
+
+        printf("  VV policies: %s,%s,%s,%s\n",
+                (buff[offset + 3] & 0x01) ? "stale_ss" : "no_stale_ss",
+                (buff[offset + 3] & 0x02) ? "one_host" : "no_one_host",
+                (buff[offset + 3] & 0x04) ? "tp_bzero" : "no_tp_bzero",
+                (buff[offset + 3] & 0x08) ? "zero_detect" : "no_zero_detect");
+
+    }
+
+    if (buff[5] & 0x04) {
+        printf("  Allocation unit: %d\n", (buff[8] << 24) +  (buff[9] << 16) +
+                (buff[10] << 8) + buff[11]);
+
+        printf("  Data pool size: %" PRIu64 "\n", (((uint64_t) buff[12]) << 56) +
+                (((uint64_t) buff[13]) << 48) + (((uint64_t) buff[14]) << 40) +
+                (((uint64_t) buff[15]) << 32) + ((uint64_t) buff[16] << 24) +
+                (buff[17] << 16) + (buff[18] << 8) + buff[19]);
+
+        printf("  Space allocated: %" PRIu64 "\n", ((uint64_t) buff[20] << 56) +
+                ((uint64_t) buff[21] << 48) + ((uint64_t) buff[22] << 40) +
+                ((uint64_t) buff[23] << 32) + ((uint64_t) buff[24] << 24) +
+                (buff[25] << 16) + (buff[26] << 8) + buff[27]);
+    }
+
+    return;
+}
+
+
+static void
 decode_firm_vpd_c0_sea(unsigned char * buff, int len)
 {
     if (len < 28) {
@@ -227,7 +309,7 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
     }
     printf("  LUN WWN: ");
     for (k = 0; k < 16; ++k)
-        printf("%02hhx", buff[10 + k]);
+        printf("%02x", buff[10 + k]);
     printf("\n");
     printf("  Array Serial Number: ");
     dStrRaw((const char *)&buff[50], buff[49]);
@@ -235,20 +317,20 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
 
     printf("  LUN State: ");
     if (buff[4] > 0x02)
-           printf("Unknown (%hhx)\n", buff[4]);
+           printf("Unknown (%x)\n", buff[4]);
     else
            printf("%s\n", lun_state_arr[buff[4]]);
 
     printf("  This path connects to: ");
     if (buff[8] > 0x01)
-           printf("Unknown SP (%hhx)", buff[8]);
+           printf("Unknown SP (%x)", buff[8]);
     else
            printf("%s", sp_arr[buff[8]]);
     printf(", Port Number: %u\n", buff[7]);
 
     printf("  Default Owner: ");
     if (buff[5] > 0x01)
-           printf("Unknown (%hhx)\n", buff[5]);
+           printf("Unknown (%x)\n", buff[5]);
     else
            printf("%s\n", sp_arr[buff[5]]);
 
@@ -265,7 +347,7 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
     else {
         printf("  SP IPv6 address: ");
         for (k = 0; k < 16; ++k)
-            printf("%02hhx", buff[32 + k]);
+            printf("%02x", buff[32 + k]);
         printf("\n");
     }
 
@@ -273,7 +355,7 @@ decode_upr_vpd_c0_emc(unsigned char * buff, int len)
     vpp80 = buff[30] & 0x08;
     lun_z = buff[30] & 0x04;
 
-    printf("  System Type: %hhx, ", buff[27]);
+    printf("  System Type: %x, ", buff[27]);
     switch (failover_mode) {
         case 4:
             printf("Failover mode: 1 (Linux)\n");
@@ -312,8 +394,8 @@ decode_rdac_vpd_c2(unsigned char * buff, int len)
                 "not possible.\n" , buff[4], buff[5], buff[6], buff[7]);
         return;
     }
-    printf("  Software Version: %d.%d.%d\n", buff[8], buff[9], buff[10]);
-    printf("  Software Date: %02x/%02x/%02x\n", buff[11], buff[12], buff[13]);
+    printf("  Software Version: %x.%x.%x\n", buff[8], buff[9], buff[10]);
+    printf("  Software Date: %02d/%02d/%02d\n", buff[11], buff[12], buff[13]);
     printf("  Features:");
     if (buff[14] & 0x01)
         printf(" Dual Active,");
@@ -464,7 +546,8 @@ decode_rdac_vpd_c8(unsigned char * buff, int len)
 #endif
     memset(label, 0, 61);
     label_len = buff[28];
-    memcpy(label, &buff[29], label_len);
+    for(i = 0; i < (label_len - 1); ++i)
+        *(label + i) = buff[29 + (2 * i) + 1];
     printf("  Volume User Label: %s\n", label);
 
     uuid_len = buff[89];
@@ -477,7 +560,8 @@ decode_rdac_vpd_c8(unsigned char * buff, int len)
     printf("  Storage Array Unique Identifier: %s\n", uuid);
     memset(label, 0, 61);
     label_len = buff[106];
-    memcpy(label, &buff[107], label_len);
+    for(i = 0; i < (label_len - 1); ++i)
+        *(label + i) = buff[107 + (2 * i) + 1];
     printf("  Storage Array User Label: %s\n", label);
 
     for (i = 0, c = uuid; i < 8; i++) {
@@ -545,12 +629,12 @@ svpd_decode_vendor(int sg_fd, int num_vpd, int subvalue, int maxlen,
                    int do_hex, int do_raw, int do_long, int do_quiet,
                    int verbose)
 {
-    int len, t, res;
+    int len, res;
     char name[64];
     const struct svpd_values_name_t * vnp;
     int alloc_len = maxlen;
 
-    t = do_long;        /* suppress warning */
+    do_long = do_long;        /* suppress warning */
     vnp = svpd_get_v_detail(num_vpd, subvalue, -1);
     if (vnp && vnp->name)
         strcpy(name, vnp->name);
@@ -594,6 +678,8 @@ svpd_decode_vendor(int sg_fd, int num_vpd, int subvalue, int maxlen,
                 decode_firm_vpd_c0_sea(rsp_buff, len);
             else if (1 == subvalue)
                 decode_upr_vpd_c0_emc(rsp_buff, len);
+            else if (2 == subvalue)
+                decode_vpd_c0_hp3par(rsp_buff, len);
             else
                 dStrHex((const char *)rsp_buff, len, 0);
             return 0;

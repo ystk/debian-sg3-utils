@@ -2,7 +2,7 @@
 #define SG_CMDS_EXTRA_H
 
 /*
- * Copyright (c) 2004-2010 Douglas Gilbert.
+ * Copyright (c) 2004-2011 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -167,6 +167,14 @@ extern int sg_ll_report_tgt_prt_grp(int sg_fd, void * resp,
 extern int sg_ll_set_tgt_prt_grp(int sg_fd, void * paramp,
                                     int param_len, int noisy, int verbose);
 
+/* Invokes a SCSI REPORT REFERRALS command. Return of 0 -> success,
+ * SG_LIB_CAT_INVALID_OP -> Report Referrals not supported,
+ * SG_LIB_CAT_ILLEGAL_REQ -> bad field in cdb, SG_LIB_CAT_ABORTED_COMMAND,
+ * SG_LIB_CAT_UNIT_ATTENTION, -1 -> other failure */
+extern int sg_ll_report_referrals(int sg_fd, uint64_t start_llba, int one_seg,
+                                  void * resp,int mx_resp_len, int noisy,
+                                  int verbose);
+
 /* Invokes a SCSI SEND DIAGNOSTIC command. Foreground, extended self tests can
  * take a long time, if so set long_duration flag. Return of 0 -> success,
  * SG_LIB_CAT_INVALID_OP -> Send diagnostic not supported,
@@ -213,6 +221,20 @@ extern int sg_ll_verify10(int sg_fd, int vrprotect, int dpo, int bytechk,
                           int data_out_len, unsigned int * infop, int noisy,
                           int verbose);
 
+/* Invokes a SCSI VERIFY (16) command (SBC).
+ * Note that 'veri_len' is in blocks while 'data_out_len' is in bytes.
+ * Returns of 0 -> success,
+ * SG_LIB_CAT_INVALID_OP -> Verify(16) not supported,
+ * SG_LIB_CAT_ILLEGAL_REQ -> bad field in cdb, SG_LIB_CAT_UNIT_ATTENTION,
+ * SG_LIB_CAT_MEDIUM_HARD -> medium or hardware error, no valid info,
+ * SG_LIB_CAT_MEDIUM_HARD_WITH_INFO -> as previous, with valid info,
+ * SG_LIB_CAT_NOT_READY -> device not ready, SG_LIB_CAT_ABORTED_COMMAND,
+ * -1 -> other failure */
+extern int sg_ll_verify16(int sg_fd, int vrprotect, int dpo, int bytechk,
+                          uint64_t llba, int veri_len, int group_num,
+                          void * data_out, int data_out_len,
+                          uint64_t * infop, int noisy, int verbose);
+
 /* Invokes a SCSI WRITE BUFFER command (SPC). Return of 0 ->
  * success, SG_LIB_CAT_INVALID_OP -> invalid opcode,
  * SG_LIB_CAT_ILLEGAL_REQ -> bad field in cdb, SG_LIB_CAT_UNIT_ATTENTION,
@@ -221,6 +243,8 @@ extern int sg_ll_verify10(int sg_fd, int vrprotect, int dpo, int bytechk,
 extern int sg_ll_write_buffer(int sg_fd, int mode, int buffer_id,
                               int buffer_offset, void * paramp,
                               int param_len, int noisy, int verbose);
+/* Need a sg_ll_write_buffer_v2() function because SPC-4 rev32 has added
+ * a "mode specific" field. Wait for next rev change of this library */
 
 /* Invokes a SCSI WRITE LONG (10) command (SBC). Note that 'xfer_len'
  * is in bytes. Returns 0 -> success,

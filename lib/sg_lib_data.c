@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2010 Douglas Gilbert.
+ * Copyright (c) 2007-2011 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -15,7 +15,7 @@
 #endif
 
 
-const char * sg_lib_version_str = "1.58 20100329";    /* spc-4 rev 23 */
+const char * sg_lib_version_str = "1.71 20111025";  /* spc4r33, sbc3r29 */
 
 struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0, 0, "Test Unit Ready"},
@@ -99,6 +99,7 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x45, PDT_MMC, "Play audio(10)"},
     {0x46, PDT_MMC, "Get configuration"},
     {0x47, PDT_MMC, "Play audio msf"},
+    {0x48, 0, "Sanitize"},
     {0x4a, PDT_MMC, "Get event status notification"},
     {0x4b, PDT_MMC, "Pause/resume"},
     {0x4c, 0, "Log select"},
@@ -283,6 +284,7 @@ struct sg_lib_value_name_t sg_lib_variable_length_arr[] = {
     {0xb, 0, "Write(32)"},
     {0xc, 0, "Write an verify(32)"},
     {0xd, 0, "Write same(32)"},
+    {0xe, 0, "Orwrite(32)"},    /* added sbc3r25 */
     {0x1800, 0, "Receive credential"},
     {0x8801, 0, "Format OSD (osd)"},
     {0x8802, 0, "Create (osd)"},
@@ -379,6 +381,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x00,0x1c,"Verify operation in progress"},
     {0x00,0x1d,"ATA pass through information available"},
     {0x00,0x1e,"Conflicting SA creation request"},
+    {0x00,0x1f,"Logical unit transitioning to another power condition"},
     {0x01,0x00,"No index/sector signal"},
     {0x02,0x00,"No seek complete"},
     {0x03,0x00,"Peripheral device write fault"},
@@ -415,6 +418,10 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x04,0x17,"Logical unit not ready, calibration required"},
     {0x04,0x18,"Logical unit not ready, a door is open"},
     {0x04,0x19,"Logical unit not ready, operating in sequential mode"},
+    {0x04,0x1a,"Logical unit not ready, start stop unit command in progress"},
+    {0x04,0x1b,"Logical unit not ready, sanitize in progress"},
+    {0x04,0x1c,"Logical unit not ready, additional power use not yet "
+                "granted"},
     {0x05,0x00,"Logical unit does not respond to selection"},
     {0x06,0x00,"No reference position found"},
     {0x07,0x00,"Multiple peripheral devices selected"},
@@ -467,6 +474,8 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x10,0x01,"Logical block guard check failed"},
     {0x10,0x02,"Logical block application tag check failed"},
     {0x10,0x03,"Logical block reference tag check failed"},
+    {0x10,0x04,"Logical block protection error on recover buffered data"},
+    {0x10,0x05,"Logical block protection method error"},
     {0x11,0x00,"Unrecovered read error"},
     {0x11,0x01,"Read retries exhausted"},
     {0x11,0x02,"Error too long to correct"},
@@ -556,6 +565,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x21,0x02,"Invalid address for write"},
     {0x21,0x03,"Invalid write crossing layer jump"},
     {0x22,0x00,"Illegal function (use 20 00, 24 00, or 26 00)"},
+    {0x23,0x00,"Invalid token operation, cause not reportable"},
     {0x24,0x00,"Invalid field in cdb"},
     {0x24,0x01,"CDB decryption error"},
     {0x24,0x02,"Invalid cdb field while in explicit block model (obs)"},
@@ -637,6 +647,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x2C,0x09,"Previous reservation conflict status"},
     {0x2C,0x0A,"Partition or collection contains user objects"},
     {0x2C,0x0B,"Not reserved"},
+    {0x2C,0x0C,"ORWRITE generation does not match"},
     {0x2D,0x00,"Overwrite error on update in place"},
     {0x2E,0x00,"Insufficient time for operation"},
     {0x2F,0x00,"Commands cleared by another initiator"},
@@ -663,6 +674,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x31,0x00,"Medium format corrupted"},
     {0x31,0x01,"Format command failed"},
     {0x31,0x02,"Zoned formatting failed due to spare linking"},
+    {0x31,0x03,"Sanitize command failed"},
     {0x32,0x00,"No defect spare location available"},
     {0x32,0x01,"Defect list update failure"},
     {0x33,0x00,"Tape length error"},
@@ -793,6 +805,10 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x53,0x02,"Medium removal prevented"},
     {0x53,0x03,"Medium removal prevented by data transfer element"},
     {0x53,0x04,"Medium thread or unthread failure"},
+    {0x53,0x05,"Volume identifier invalid"},
+    {0x53,0x06,"Volume identifier missing"},
+    {0x53,0x07,"Duplicate volume identifier"},
+    {0x53,0x08,"Element status unknown"},
     {0x54,0x00,"SCSI to host system interface failure"},
     {0x55,0x00,"System resource failure"},
     {0x55,0x01,"System buffer full"},
@@ -1053,12 +1069,12 @@ const char * sg_lib_pdt_strs[] = {
     "processor",        /* often SAF-TE (seldom scanner) device */
     "write once optical disk",
     /* 5 */ "cd/dvd",
-    "scanner",
+    "scanner",                  /* obsolete */
     "optical memory device",
     "medium changer",
-    "communications",
-    /* 0xa */ "graphics [0xa]",
-    "graphics [0xb]",
+    "communications",           /* obsolete */
+    /* 0xa */ "graphics [0xa]", /* obsolete */
+    "graphics [0xb]",           /* obsolete */
     "storage array controller",
     "enclosure services device",
     "simplified direct access device",
@@ -1075,15 +1091,16 @@ const char * sg_lib_pdt_strs[] = {
 
 const char * sg_lib_transport_proto_strs[] =
 {
-    "Fibre Channel (FCP-2)",
-    "Parallel SCSI (SPI-5)",
-    "SSA (SSA-S3P)",
-    "IEEE 1394 (SBP-3)",
-    "Remote Direct Memory Access (RDMA)",
+    "Fibre Channel Protocol for SCSI (FCP-2)",
+    "SCSI Parallel Interface (SPI-5)",
+    "Serial Storage Architecture SCSI-3 Protocol (SSA-S3P)",
+    "Serial Bus Protocol for IEEE 1394 (SBP-3)",
+    "SCSI RDMA Protocol (SRP)",
     "Internet SCSI (iSCSI)",
-    "Serial Attached SCSI (SAS)",
-    "Automation/Drive Interface (ADT-2)",
-    "ATA Packet Interface (ATA/ATAPI-7)",
-    "Ox9", "Oxa", "Oxb", "Oxc", "Oxd", "Oxe",
+    "Serial Attached SCSI Protocol (SPL-2)",
+    "Automation/Drive Interface Transport (ADT-2)",
+    "AT Attachment Interface (ACS-2)",
+    "USB Attached SCSI (UAS-2)",
+    "Oxa", "Oxb", "Oxc", "Oxd", "Oxe",
     "No specific protocol"
 };

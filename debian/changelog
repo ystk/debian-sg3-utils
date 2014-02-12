@@ -1,3 +1,42 @@
+sg3-utils (1.33-1) unstable; urgency=low
+
+  * [d05522e] Fix installation path.
+    Thanks to Chow Loong Jin (Closes: #657404)
+  * [22587cc] Imported Upstream version 1.33
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Thu, 26 Jan 2012 23:40:42 +0530
+
+sg3-utils (1.32-1) unstable; urgency=low
+
+  * New upstream version
+  * [06cef8d] Use kfreebsd-any as the build-dep.
+    Thanks to Robert Millan (Closes: 634362)
+  * [850586d] separate build-arch and build-indep targets
+  * [a432747] Drop duplicate changelog
+  * [ec2bbd8] Update Standards Version to 3.9.2. No changes required
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Tue, 09 Aug 2011 16:36:28 +0530
+
+sg3-utils (1.31-1) unstable; urgency=low
+
+  * New Upstream Release 
+  * [0d9bfc1] update symbols file
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Thu, 17 Mar 2011 19:46:32 +0530
+
+sg3-utils (1.30-1) unstable; urgency=low
+
+  * New Upstream Release
+  * Change address to my official Debian address and remove the DMUA flag 
+  * Add a get-orig-source target 
+  * Dropping patches that have merged upstream
+    - 001_man_page_fixes.patch
+    - 002_spelling_error_fixes.patch 
+  * Update Standards Version to 3.9.1
+    - Add BSD license to the copyright section 
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Fri, 11 Feb 2011 01:22:58 +0530
+
 sg3-utils (1.29-1) unstable; urgency=low
 
   [Ritesh Raj Sarraf]

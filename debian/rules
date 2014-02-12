@@ -8,6 +8,11 @@ export DH_OPTIONS
 # export DH_VERBOSE=1
 
 DEB_HOST_ARCH_OS := $(shell dpkg-architecture -qDEB_HOST_ARCH_OS 2>/dev/null)
+PKG_VERS=$(shell dpkg-parsechangelog | sed -rne 's,^Version: ([^-]+).*,\1,p')
+
+
+get-orig-source:
+	uscan --force-download --rename --repack --download-version=$(PKG_VERS) --destdir=.
 
 configure: configure-stamp
 configure-stamp:
@@ -15,7 +20,11 @@ configure-stamp:
 	CFLAGS="$(CFLAGS)" ./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --bindir=/usr/bin --prefix=/usr --mandir=\$${prefix}/share/man
 	touch configure-stamp
 
-build: configure-stamp build-stamp
+build: build-arch build-indep
+
+build-arch: configure-stamp build-stamp
+build-indep: configure-stamp build-stamp
+
 build-stamp:
 	dh_testdir
 
@@ -42,9 +51,9 @@ install: build
 
 	# Add here commands to install the package into debian/tmp
 	$(MAKE) -e install DESTDIR=$(CURDIR)/debian/tmp PREFIX=/usr
+	cp scripts/scsi* debian/tmp/usr/bin
 
 	dh_install --autodest --sourcedir=debian/tmp
-	cp scripts/scsi* debian/sg3-utils/usr/bin
 
 	dh_installman
 
@@ -77,4 +86,4 @@ endif
 	dh_builddeb
 
 binary: binary-indep binary-arch
-.PHONY: build clean binary-indep binary-arch binary install configure
+.PHONY: build clean binary-indep binary-arch binary install configure get-orig-source

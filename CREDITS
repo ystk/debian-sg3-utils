@@ -37,6 +37,7 @@ Grant Grundler <grundler at parisc-linux dot org> co-author of blk512-linux
 Hannes Reinecke <hare at suse dot de> 
         contributed sg_rdac, (and some corresponding VPD entries to
         sg_vpd_vendor), sg_stpg and sg_safte [20071013]
+	sg_referrals [20100906]
 
 Hayashi Naoyuki <titan at culzean dot org>
         port to Tru64 [20060127]
@@ -84,6 +85,10 @@ Pat LaVarre <p.lavarre at ieee dot org> pointed out danger of negative bpt
 Peter Allworth <linsol at zeta dot org dot au> original dd clone design used
         by sg3_utils's dd variants (e.g. sg_dd).
 
+Ronnie Sahlberg <ronniesahlberg at gmail dot com> has written libiscsi and a
+        set of external patches to add direct iSCSI support to this package.
+        See README.iscsi [20110518]
+
 Saeed Bishara contributed sg_write_long
 
 Thomas Kolbe <tkolbe at partnersdata dot com>
@@ -100,4 +105,4 @@ Trent Piepho <xyzzy at speakeasy dot org> print out some "sense key specific"
 
 
 Doug Gilbert
-25th February 2010
+18th May 2011

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2010 Douglas Gilbert.
+ * Copyright (c) 2009-2012 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -27,7 +27,7 @@
  * This program issues the SCSI GET LBA STATUS command to the given SCSI device.
  */
 
-static char * version_str = "1.02 20100329";    /* sbc2r22 */
+static char * version_str = "1.04 20120118";    /* sbc2r29 */
 
 #define MAX_GLBAS_BUFF_LEN (1024 * 1024)
 #define DEF_GLBAS_BUFF_LEN 24
@@ -232,9 +232,11 @@ main(int argc, char * argv[])
                                verbose);
     ret = res;
     if (0 == res) {
+        /* in sbc3r25 offset for calculating the 'parameter data length'
+         * (rlen variable below) was reduced from 8 to 4. */
         if (maxlen >= 4)
             rlen = (glbasBuffp[0] << 24) + (glbasBuffp[1] << 16) +
-                   (glbasBuffp[2] << 8) + glbasBuffp[3] + 8;
+                   (glbasBuffp[2] << 8) + glbasBuffp[3] + 4;
         else
             rlen = maxlen;
         k = (rlen > maxlen) ? maxlen : rlen;
@@ -280,8 +282,8 @@ main(int argc, char * argv[])
                         "descriptor:\n" "  descriptor LBA: 0x");
                 for (j = 0; j < 8; ++j)
                     fprintf(stderr, "%02x", glbasBuffp[8 + j]);
-                fprintf(stderr, "  blocks: 0x%x  p_status: %d\n", d_blocks,
-                        res);
+                fprintf(stderr, "  blocks: 0x%x  p_status: %d\n",
+                        (unsigned int)d_blocks, res);
                 ret = SG_LIB_CAT_OTHER;
                 goto the_end;
             }
@@ -306,12 +308,12 @@ main(int argc, char * argv[])
                 printf("0x");
                 for (j = 0; j < 8; ++j)
                     printf("%02x", ucp[j]);
-                printf("  0x%x  %d\n", d_blocks, res);
+                printf("  0x%x  %d\n", (unsigned int)d_blocks, res);
             } else {
                 printf("descriptor LBA: 0x");
                 for (j = 0; j < 8; ++j)
                     printf("%02x", ucp[j]);
-                printf("  blocks: %d", d_blocks);
+                printf("  blocks: %u", (unsigned int)d_blocks);
                 switch (res) {
                 case 0:
                     printf("  mapped\n");

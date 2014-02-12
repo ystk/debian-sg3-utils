@@ -1,5 +1,5 @@
 /* A utility program originally written for the Linux OS SCSI subsystem.
- *  Copyright (C) 2004-2010 D. Gilbert
+ *  Copyright (C) 2004-2011 D. Gilbert
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2, or (at your option)
@@ -26,7 +26,7 @@
 
 #include "sg_pt.h"
 
-static char * version_str = "0.35 20100309";    /* spc4r20 */
+static char * version_str = "0.37 20110303";    /* spc4r26 */
 
 
 #define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
@@ -47,19 +47,21 @@ static int peri_type = 0; /* ugly but not easy to pass to alpha compare */
 static int do_rsoc(int sg_fd, int rctd, int rep_opts, int rq_opcode,
                    int rq_servact, void * resp, int mx_resp_len, int noisy,
                    int verbose);
-static int do_rstmf(int sg_fd, void * resp, int mx_resp_len, int noisy,
-                    int verbose);
+static int do_rstmf(int sg_fd, int repd, void * resp, int mx_resp_len,
+                    int noisy, int verbose);
 
 
 static struct option long_options[] = {
         {"alpha", 0, 0, 'a'},
         {"help", 0, 0, 'h'},
         {"hex", 0, 0, 'H'},
+        {"no-inquiry", 0, 0, 'n'},
         {"new", 0, 0, 'N'},
         {"opcode", 1, 0, 'o'},
         {"old", 0, 0, 'O'},
         {"raw", 0, 0, 'r'},
         {"rctd", 0, 0, 'R'},
+        {"repd", 0, 0, 'q'},
         {"sa", 1, 0, 's'},
         {"tmf", 0, 0, 't'},
         {"unsorted", 0, 0, 'u'},
@@ -72,9 +74,11 @@ struct opts_t {
     int do_alpha;
     int do_help;
     int do_hex;
+    int no_inquiry;
     int do_opcode;
     int do_raw;
     int do_rctd;
+    int do_repd;
     int do_servact;
     int do_verbose;
     int do_version;
@@ -90,15 +94,17 @@ usage()
 {
     fprintf(stderr,
             "Usage:  sg_opcodes [--alpha] [--help] [--hex] "
-            "[--opcode=OP[,SA]] [--raw]\n"
-            "                   [--rctd] [--sa=SA] [--tmf] [--unsorted] "
-            "[--verbose]\n"
-            "                   [--version] DEVICE\n"
+            "[--no-inquiry]\n"
+            "                   [--opcode=OP[,SA]] [--raw] [--rctd] "
+            "[--repd] [--sa=SA]\n"
+            "                   [--tmf] [--unsorted] [--verbose] "
+            "[--version] DEVICE\n"
             "  where:\n"
             "    --alpha|-a      output list of operation codes sorted "
             "alphabetically\n"
             "    --help|-h       print usage message then exit\n"
             "    --hex|-H        output response in hex\n"
+            "    --no-inquiry|-n    don't output INQUIRY information\n"
             "    --opcode=OP|-o OP    first byte of command to query\n"
             "                         (decimal, prefix with '0x' for hex)\n"
             "    --opcode=OP,SA|-o OP,SA    opcode (OP) and service action "
@@ -108,6 +114,8 @@ usage()
             "    --raw|-r        output response in binary to stdout\n"
             "    --rctd|-R       set RCTD (return command timeout "
             "descriptor) bit\n"
+            "    --repd|-q       set Report Extended Parameter Data bit, "
+            "with --tmf\n"
             "    --sa=SA|-s SA    service action in addition to opcode\n"
             "                     (decimal, prefix with '0x' for hex)\n"
             "    --tmf|-t        output list of supported task management "
@@ -117,7 +125,7 @@ usage()
             "action))\n"
             "    --verbose|-v    increase verbosity\n"
             "    --version|-V    print version string then exit\n\n"
-            "Performs a SCSI REPORT SUPPORTED OPERATION CODES or REPORT "
+            "Performs a SCSI REPORT SUPPORTED OPERATION CODES or a REPORT "
             "SUPPORTED\nTASK MANAGEMENT FUNCTIONS command\n");
 }
 
@@ -125,14 +133,16 @@ static void
 usage_old()
 {
     fprintf(stderr,
-            "Usage:  sg_opcodes [-a] [-H] [-o=OP] [-r] [-R] [-s=SA]"
-            " [-t] [-u]\n"
-            "                   [-v] [-V] DEVICE\n"
+            "Usage:  sg_opcodes [-a] [-H] [-n] [-o=OP] [-q] [-r] [-R] "
+            "[-s=SA]\n"
+            "                   [-t] [-u] [-v] [-V] DEVICE\n"
             "  where:\n"
             "    -a    output list of operation codes sorted "
             "alphabetically\n"
             "    -H    print response in hex\n"
+            "    -n    don't output INQUIRY information\n"
             "    -o=OP    first byte of command to query (in hex)\n"
+            "    -q    set REPD bit for tmf_s\n"
             "    -r    output response in binary to stdout\n"
             "    -R    set RCTD (return command timeout "
             "descriptor) bit\n"
@@ -142,7 +152,7 @@ usage_old()
             "    -v    verbose\n"
             "    -V    output version string\n"
             "    -?    output this usage message\n\n"
-            "Performs a SCSI REPORT SUPPORTED OPERATION CODES (or REPORT "
+            "Performs a SCSI REPORT SUPPORTED OPERATION CODES (or a REPORT "
             "TASK MANAGEMENT\nFUNCTIONS) command\n");
 }
 
@@ -156,7 +166,7 @@ process_cl_new(struct opts_t * optsp, int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "ahHNo:OrRs:tuvV", long_options,
+        c = getopt_long(argc, argv, "ahHnNo:OqrRs:tuvV", long_options,
                         &option_index);
         if (c == -1)
             break;
@@ -171,6 +181,9 @@ process_cl_new(struct opts_t * optsp, int argc, char * argv[])
             break;
         case 'H':
             ++optsp->do_hex;
+            break;
+        case 'n':
+            ++optsp->no_inquiry;
             break;
         case 'N':
             break;      /* ignore */
@@ -209,6 +222,9 @@ process_cl_new(struct opts_t * optsp, int argc, char * argv[])
         case 'O':
             optsp->opt_new = 0;
             return 0;
+        case 'q':
+            ++optsp->do_repd;
+            break;
         case 'r':
             ++optsp->do_raw;
             break;
@@ -280,10 +296,16 @@ process_cl_old(struct opts_t * optsp, int argc, char * argv[])
                 case 'H':
                     ++optsp->do_hex;
                     break;
+                case 'n':
+                    ++optsp->no_inquiry;
+                    break;
                 case 'N':
                     optsp->opt_new = 1;
                     return 0;
                 case 'O':
+                    break;
+                case 'q':
+                    ++optsp->do_repd;
                     break;
                 case 'R':
                     ++optsp->do_rctd;
@@ -684,7 +706,7 @@ main(int argc, char * argv[])
         }
         if (0 == sg_simple_inquiry(sg_fd, &inq_resp, 1, opts.do_verbose)) {
             peri_type = inq_resp.peripheral_type;
-            if (0 == opts.do_raw) {
+            if (! (opts.do_raw || opts.no_inquiry)) {
                 printf("  %.8s  %.16s  %.4s\n", inq_resp.vendor,
                        inq_resp.product, inq_resp.revision);
                 cp = sg_get_pdt_str(peri_type, sizeof(buff), buff);
@@ -715,8 +737,8 @@ main(int argc, char * argv[])
         rep_opts = ((opts.do_servact >= 0) ? 2 : 1);
     memset(rsoc_buff, 0, sizeof(rsoc_buff));
     if (opts.do_taskman)
-        res = do_rstmf(sg_fd, rsoc_buff, sizeof(rsoc_buff), 0,
-                       opts.do_verbose);
+        res = do_rstmf(sg_fd, opts.do_repd, rsoc_buff,
+                       (opts.do_repd ? 16 : 4), 0, opts.do_verbose);
     else
         res = do_rsoc(sg_fd, opts.do_rctd, rep_opts, opts.do_opcode,
                       opts.do_servact, rsoc_buff, sizeof(rsoc_buff), 0,
@@ -747,12 +769,12 @@ main(int argc, char * argv[])
     }
     if (opts.do_taskman) {
         if (opts.do_raw) {
-            dStrRaw((const char *)rsoc_buff, 4);
+            dStrRaw((const char *)rsoc_buff, (opts.do_repd ? 16 : 4));
             goto err_out;
         }
         printf("\nTask Management Functions supported by device:\n");
         if (opts.do_hex) {
-            dStrHex((const char *)rsoc_buff, 4, 1);
+            dStrHex((const char *)rsoc_buff, (opts.do_repd ? 16 : 4), 1);
             goto err_out;
         }
         if (rsoc_buff[0] & 0x80)
@@ -777,6 +799,31 @@ main(int argc, char * argv[])
             printf("    Query task set\n");
         if (rsoc_buff[1] & 0x1)
             printf("    I_T nexus reset\n");
+        if (opts.do_repd) {
+            if (rsoc_buff[3] < 0xc) {
+                fprintf(stderr, "when REPD given, byte 3 of response "
+                        "should be >= 12\n");
+                res = SG_LIB_CAT_OTHER;
+                goto err_out;
+            } else
+                printf("  Extended parameter data:\n");
+            printf("    TMFTMOV=%d\n", !!(rsoc_buff[4] & 0x1));
+            printf("    ATTS=%d\n", !!(rsoc_buff[6] & 0x80));
+            printf("    ATSTS=%d\n", !!(rsoc_buff[6] & 0x40));
+            printf("    CACATS=%d\n", !!(rsoc_buff[6] & 0x20));
+            printf("    CTSTS=%d\n", !!(rsoc_buff[6] & 0x10));
+            printf("    LURTS=%d\n", !!(rsoc_buff[6] & 0x8));
+            printf("    QTTS=%d\n", !!(rsoc_buff[6] & 0x4));
+            printf("    QAETS=%d\n", !!(rsoc_buff[7] & 0x4));
+            printf("    QTSTS=%d\n", !!(rsoc_buff[7] & 0x2));
+            printf("    ITNRTS=%d\n", !!(rsoc_buff[7] & 0x1));
+            printf("    tmf long timeout: %d (100 ms units)\n",
+                   (rsoc_buff[8] << 24) + (rsoc_buff[9] << 16) +
+                   (rsoc_buff[10] << 8) + rsoc_buff[11]);
+            printf("    tmf short timeout: %d (100 ms units)\n",
+                   (rsoc_buff[12] << 24) + (rsoc_buff[13] << 16) +
+                   (rsoc_buff[14] << 8) + rsoc_buff[15]);
+        }
     } else if (0 == rep_opts) {  /* list all supported operation codes */
         len = ((rsoc_buff[0] << 24) | (rsoc_buff[1] << 16) |
                (rsoc_buff[2] << 8) | rsoc_buff[3]) + 4;
@@ -887,7 +934,8 @@ do_rsoc(int sg_fd, int rctd, int rep_opts, int rq_opcode, int rq_servact,
 }
 
 static int
-do_rstmf(int sg_fd, void * resp, int mx_resp_len, int noisy, int verbose)
+do_rstmf(int sg_fd, int repd, void * resp, int mx_resp_len, int noisy,
+         int verbose)
 {
     int k, ret, res, sense_cat;
     unsigned char rstmfCmdBlk[RSTMF_CMD_LEN] = {SG_MAINTENANCE_IN, RSTMF_SA,
@@ -895,6 +943,8 @@ do_rstmf(int sg_fd, void * resp, int mx_resp_len, int noisy, int verbose)
     unsigned char sense_b[SENSE_BUFF_LEN];
     struct sg_pt_base * ptvp;
 
+    if (repd)
+        rstmfCmdBlk[2] = 0x80;
     rstmfCmdBlk[6] = (unsigned char)((mx_resp_len >> 24) & 0xff);
     rstmfCmdBlk[7] = (unsigned char)((mx_resp_len >> 16) & 0xff);
     rstmfCmdBlk[8] = (unsigned char)((mx_resp_len >> 8) & 0xff);

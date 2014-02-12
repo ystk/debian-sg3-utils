@@ -102,6 +102,7 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_ll_receive_diag@Base 1.27
  sg_ll_report_id_info@Base 1.27
  sg_ll_report_luns@Base 1.27
+ sg_ll_report_referrals@Base 1.30
  sg_ll_report_tgt_prt_grp@Base 1.27
  sg_ll_request_sense@Base 1.27
  sg_ll_send_diag@Base 1.27
@@ -116,6 +117,7 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_ll_unmap@Base 1.28
  sg_ll_unmap_v2@Base 1.29
  sg_ll_verify10@Base 1.27
+ sg_ll_verify16@Base 1.31
  sg_ll_write_buffer@Base 1.27
  sg_ll_write_long10@Base 1.27
  sg_ll_write_long16@Base 1.27

@@ -15,7 +15,7 @@
 #include "sg_cmds_basic.h"
 
 /* A utility program originally written for the Linux OS SCSI subsystem.
-*  Copyright (C) 2000-2010 D. Gilbert
+*  Copyright (C) 2000-2011 D. Gilbert
 *  This program is free software; you can redistribute it and/or modify
 *  it under the terms of the GNU General Public License as published by
 *  the Free Software Foundation; either version 2, or (at your option)
@@ -25,7 +25,7 @@
 
 */
 
-static char * version_str = "0.95 20100331";    /* SPC-4 revision 23 */
+static char * version_str = "1.05 20111020";    /* spc4r30 + sbc3r28 */
 
 #define MX_ALLOC_LEN (0xfffc)
 #define SHORT_RESP_LEN 128
@@ -38,14 +38,15 @@ static char * version_str = "0.95 20100331";    /* SPC-4 revision 23 */
 #define VERIFY_ERR_LPAGE 0x5
 #define NON_MEDIUM_LPAGE 0x6
 #define LAST_N_ERR_LPAGE 0x7
+#define FORMAT_STATUS_LPAGE 0x8
 #define LAST_N_DEFERRED_LPAGE 0xb
-#define THIN_PROV_LPAGE 0xc
+#define LB_PROV_LPAGE 0xc
 #define TEMPERATURE_LPAGE 0xd
 #define START_STOP_LPAGE 0xe
 #define APP_CLIENT_LPAGE 0xf
 #define SELF_TEST_LPAGE 0x10
 #define SOLID_STATE_MEDIA_LPAGE 0x11
-#define PORT_SPECIFIC_LPAGE 0x18
+#define PROTO_SPECIFIC_LPAGE 0x18
 #define STATS_LPAGE 0x19
 #define PCT_LPAGE 0x1a
 #define TAPE_ALERT_LPAGE 0x2e
@@ -60,7 +61,7 @@ static char * version_str = "0.95 20100331";    /* SPC-4 revision 23 */
 
 #define LOG_SENSE_PROBE_ALLOC_LEN 4
 
-static unsigned char rsp_buff[MX_ALLOC_LEN];
+static unsigned char rsp_buff[MX_ALLOC_LEN + 4];
 
 static struct option long_options[] = {
         {"all", no_argument, 0, 'a'},
@@ -227,6 +228,8 @@ usage_for(const struct opts_t * optsp)
         usage_old();
 }
 
+/* Processes command line options according to new option format. Returns
+ * 0 is ok, else SG_LIB_SYNTAX_ERROR is returned. */
 static int
 process_cl_new(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -275,8 +278,9 @@ process_cl_new(struct opts_t * optsp, int argc, char * argv[])
             break;
         case 'm':
             n = sg_get_num(optarg);
-            if ((n < 0) || (1 == n)) {
-                fprintf(stderr, "bad argument to '--maxlen='\n");
+            if ((n < 0) || (1 == n) || (n > 0xffff)) {
+                fprintf(stderr, "bad argument to '--maxlen=', from 2 to "
+                        "65535 (inclusive) expected\n");
                 usage();
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -375,6 +379,8 @@ process_cl_new(struct opts_t * optsp, int argc, char * argv[])
     return 0;
 }
 
+/* Processes command line options according to old option format. Returns
+ * 0 is ok, else SG_LIB_SYNTAX_ERROR is returned. */
 static int
 process_cl_old(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -525,6 +531,12 @@ process_cl_old(struct opts_t * optsp, int argc, char * argv[])
     return 0;
 }
 
+/* Process command line options. First check using new option format unless
+ * the SG3_UTILS_OLD_OPTS environment variable is defined which causes the
+ * old option format to be checked first. Both new and old format can be
+ * countermanded by a '-O' and '-N' options respectively. As soon as either
+ * of these options is detected (when processing the other format), processing
+ * stops and is restarted using the other format. Clear? */
 static int
 process_cl(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -567,10 +579,10 @@ static int
 do_logs(int sg_fd, unsigned char * resp, int mx_resp_len, int noisy,
         const struct opts_t * optsp)
 {
-    int actual_len;
-    int res;
+    int actual_len, res, vb;
 
     memset(resp, 0, mx_resp_len);
+    vb = optsp->do_verbose;
     if (optsp->maxlen > 1)
         actual_len = mx_resp_len;
     else {
@@ -578,7 +590,7 @@ do_logs(int sg_fd, unsigned char * resp, int mx_resp_len, int noisy,
                                    optsp->page_control, optsp->pg_code,
                                    optsp->subpg_code, optsp->paramp,
                                    resp, LOG_SENSE_PROBE_ALLOC_LEN,
-                                   noisy, optsp->do_verbose))) {
+                                   noisy, vb))) {
             switch (res) {
             case SG_LIB_CAT_NOT_READY:
             case SG_LIB_CAT_INVALID_OP:
@@ -591,11 +603,22 @@ do_logs(int sg_fd, unsigned char * resp, int mx_resp_len, int noisy,
             }
         }
         actual_len = (resp[2] << 8) + resp[3] + 4;
-        if ((0 == optsp->do_raw) && (optsp->do_verbose > 1)) {
+        if ((0 == optsp->do_raw) && (vb > 1)) {
             fprintf(stderr, "  Log sense (find length) response:\n");
             dStrHex((const char *)resp, LOG_SENSE_PROBE_ALLOC_LEN, 1);
             fprintf(stderr, "  hence calculated response length=%d\n",
                     actual_len);
+        }
+        if (optsp->pg_code != (0x3f & resp[0])) {
+            if (vb)
+                fprintf(stderr, "Page code does not appear in first byte "
+                        "of response so it's suspect\n");
+            if (actual_len > 0x40) {
+                actual_len = 0x40;
+                if (vb)
+                    fprintf(stderr, "Trim response length to 64 bytes due "
+                            "to suspect response format\n");
+            }
         }
         /* Some HBAs don't like odd transfer lengths */
         if (actual_len % 2)
@@ -606,7 +629,7 @@ do_logs(int sg_fd, unsigned char * resp, int mx_resp_len, int noisy,
     if ((res = sg_ll_log_sense(sg_fd, optsp->do_ppc, optsp->do_sp,
                                optsp->page_control, optsp->pg_code,
                                optsp->subpg_code, optsp->paramp,
-                               resp, actual_len, noisy, optsp->do_verbose))) {
+                               resp, actual_len, noisy, vb))) {
         switch (res) {
         case SG_LIB_CAT_NOT_READY:
         case SG_LIB_CAT_INVALID_OP:
@@ -618,7 +641,7 @@ do_logs(int sg_fd, unsigned char * resp, int mx_resp_len, int noisy,
             return -1;
         }
     }
-    if ((0 == optsp->do_raw) && (optsp->do_verbose > 1)) {
+    if ((0 == optsp->do_raw) && (vb > 1)) {
         fprintf(stderr, "  Log sense response:\n");
         dStrHex((const char *)resp, actual_len, 1);
     }
@@ -660,7 +683,7 @@ show_page_name(int pg_code, int subpg_code,
         case START_STOP_LPAGE: printf("%sStart-stop cycle counter", b); break;
         case APP_CLIENT_LPAGE: printf("%sApplication client", b); break;
         case SELF_TEST_LPAGE: printf("%sSelf-test results", b); break;
-        case PORT_SPECIFIC_LPAGE: printf("%sProtocol specific port", b); break;
+        case PROTO_SPECIFIC_LPAGE: printf("%sProtocol specific port", b); break;
         case STATS_LPAGE:
             printf("%sGeneral statistics and performance", b);
             break;
@@ -705,11 +728,11 @@ show_page_name(int pg_code, int subpg_code,
         /* disk (direct access) type devices */
         {
             switch (pg_code) {
-            case 0x8:
+            case FORMAT_STATUS_LPAGE:
                 printf("%sFormat status (sbc-2)\n", b);
                 break;
-            case THIN_PROV_LPAGE:               /* 0xc */
-                printf("%sThin provisioning (sbc-3)\n", b);
+            case LB_PROV_LPAGE:                 /* 0xc */
+                printf("%sLogical block provisioning (sbc-3)\n", b);
                 break;
             case 0x15:
                 printf("%sBackground scan results (sbc-3)\n", b);
@@ -759,9 +782,11 @@ show_page_name(int pg_code, int subpg_code,
                 break;
             case 0x16:
                 printf("%sTape diagnostic (ssc-3)\n", b);
+                done = 0;
                 break;
             case 0x17:
                 printf("%sVolume statistics (ssc-4)\n", b);
+                done = 0;
                 break;
             case 0x2d:
                 printf("%sCurrent service information (ssc-3)\n", b);
@@ -823,6 +848,11 @@ show_page_name(int pg_code, int subpg_code,
                 break;
             case 0x15:
                 printf("%sService buffers information (adc)\n", b);
+                done = 0;
+                break;
+            case 0x16:
+                printf("%sTape diagnostic (adc)\n", b);
+                done = 0;
                 break;
             default:
                 done = 0;
@@ -868,6 +898,7 @@ get_pcb_str(int pcb, char * outp, int maxoutlen)
         outp[0] = '\0';
 }
 
+/* BUFF_OVER_UNDER_LPAGE */
 static void
 show_buffer_under_overrun_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -933,6 +964,7 @@ show_buffer_under_overrun_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* WRITE_ERR_LPAGE; READ_ERR_LPAGE; READ_REV_ERR_LPAGE; VERIFY_ERR_LPAGE */
 static void
 show_error_counter_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -1000,6 +1032,7 @@ show_error_counter_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* NON_MEDIUM_LPAGE */
 static void
 show_non_medium_error_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -1049,6 +1082,7 @@ show_non_medium_error_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* PCT_LPAGE */
 static void
 show_power_condition_transitions_page(unsigned char * resp, int len,
                                       int show_pcb)
@@ -1328,6 +1362,7 @@ show_data_compression_log_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* LAST_N_ERR_LPAGE */
 static void
 show_last_n_error_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -1369,6 +1404,7 @@ show_last_n_error_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* LAST_N_DEFERRED_LPAGE */
 static void
 show_last_n_deferred_error_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -1410,7 +1446,7 @@ static const char * self_test_result[] = {
     "aborted by SEND DIAGNOSTIC",
     "aborted other than by SEND DIAGNOSTIC",
     "unknown error, unable to complete",
-    "self test completed with failure in test segment (which one unkown)",
+    "self test completed with failure in test segment (which one unknown)",
     "first segment in self test failed",
     "second segment in self test failed",
     "another segment in self test failed",
@@ -1418,6 +1454,7 @@ static const char * self_test_result[] = {
     "reserved",
     "self test in progress"};
 
+/* SELF_TEST_LPAGE */
 static void
 show_self_test_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -1464,6 +1501,7 @@ show_self_test_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* TEMPERATURE_LPAGE */
 static void
 show_temperature_page(unsigned char * resp, int len, int show_pcb, int hdr,
                       int show_unknown)
@@ -1516,6 +1554,7 @@ show_temperature_page(unsigned char * resp, int len, int show_pcb, int hdr,
     }
 }
 
+/* START_STOP_LPAGE */
 static void
 show_start_stop_page(unsigned char * resp, int len, int show_pcb, int verbose)
 {
@@ -1613,6 +1652,7 @@ show_start_stop_page(unsigned char * resp, int len, int show_pcb, int verbose)
     }
 }
 
+/* IE_LPAGE */
 static void
 show_ie_page(unsigned char * resp, int len, int show_pcb, int full)
 {
@@ -1656,7 +1696,7 @@ show_ie_page(unsigned char * resp, int len, int show_pcb, int full)
                             printf("\n  Threshold temperature = %d C  [IBM "
                                    "extension]", ucp[7]);
                         else
-                            printf("\n  Treshold temperature = <not "
+                            printf("\n  Threshold temperature = <not "
                                    "available>");
                      }
                 }
@@ -1675,11 +1715,11 @@ show_ie_page(unsigned char * resp, int len, int show_pcb, int full)
 
 /* from sas2r15 */
 static void
-show_sas_phy_event_info(int peis, unsigned int val, unsigned thresh_val)
+show_sas_phy_event_info(int pes, unsigned int val, unsigned int thresh_val)
 {
     unsigned int u;
 
-    switch (peis) {
+    switch (pes) {
     case 0:
         printf("     No event\n");
         break;
@@ -1801,10 +1841,13 @@ show_sas_phy_event_info(int peis, unsigned int val, unsigned thresh_val)
         printf("     Received SMP frame error count: %u\n", val);
         break;
     default:
+        printf("     Unknown phy event source: %d, val=%u, thresh_val=%u\n",
+               pes, val, thresh_val);
         break;
     }
 }
 
+/* PROTO_SPECIFIC_LPAGE for a SAS port */
 static void
 show_sas_port_param(unsigned char * ucp, int param_len,
                     const struct opts_t * optsp)
@@ -1877,6 +1920,8 @@ show_sas_port_param(unsigned char * ucp, int param_len,
             printf("      sas_addr=0x%" PRIx64 "\n", ull);
         } else {
             t = ((0x70 & vcp[4]) >> 4);
+            /* attached device type. In SAS-1.1 case 2 was an edge expander;
+             * in SAS-2 case 3 is marked as obsolete. */
             switch (t) {
             case 0: snprintf(s, sz, "no device attached"); break;
             case 1: snprintf(s, sz, "end device"); break;
@@ -1937,6 +1982,7 @@ show_sas_port_param(unsigned char * ucp, int param_len,
             case 8: snprintf(s, sz, "phy enabled; 1.5 Gbps"); break;
             case 9: snprintf(s, sz, "phy enabled; 3 Gbps"); break;
             case 0xa: snprintf(s, sz, "phy enabled; 6 Gbps"); break;
+            case 0xb: snprintf(s, sz, "phy enabled; 12 Gbps"); break;
             default: snprintf(s, sz, "reserved [%d]", t); break;
             }
             printf("    negotiated logical link rate: %s\n", s);
@@ -1963,7 +2009,7 @@ show_sas_port_param(unsigned char * ucp, int param_len,
             printf("    Phy reset problem = %u\n", ui);
         }
         if (spld_len > 51) {
-            int num_ped, peis;
+            int num_ped, pes;
             unsigned char * xcp;
             unsigned int pvdt;
 
@@ -1981,18 +2027,19 @@ show_sas_port_param(unsigned char * ucp, int param_len,
             }
             xcp = vcp + 52;
             for (m = 0; m < (num_ped * 12); m += 12, xcp += 12) {
-                peis = xcp[3];
+                pes = xcp[3];
                 ui = (xcp[4] << 24) | (xcp[5] << 16) | (xcp[6] << 8) |
                      xcp[7];
                 pvdt = (xcp[8] << 24) | (xcp[9] << 16) | (xcp[10] << 8) |
                        xcp[11];
-                show_sas_phy_event_info(peis, ui, pvdt);
+                show_sas_phy_event_info(pes, ui, pvdt);
             }
         } else if (optsp->do_verbose)
            printf("    <<No phy event descriptors>>\n");
     }
 }
 
+/* PROTO_SPECIFIC_LPAGE */
 static int
 show_protocol_specific_page(unsigned char * resp, int len,
                             const struct opts_t * optsp)
@@ -2002,7 +2049,7 @@ show_protocol_specific_page(unsigned char * resp, int len,
 
     num = len - 4;
     if (optsp->do_name)
-        printf("log_page=0x%x\n", PORT_SPECIFIC_LPAGE);
+        printf("log_page=0x%x\n", PROTO_SPECIFIC_LPAGE);
     for (k = 0, ucp = resp + 4; k < num; ) {
         param_len = ucp[3] + 4;
         if (6 != (0xf & ucp[4]))
@@ -2017,6 +2064,7 @@ show_protocol_specific_page(unsigned char * resp, int len,
 }
 
 /* Returns 1 if processed page, 0 otherwise */
+/* STATS_LPAGE, 0x0 to 0x1f */
 static int
 show_stats_perform_page(unsigned char * resp, int len,
                         const struct opts_t * optsp)
@@ -2343,6 +2391,7 @@ show_stats_perform_page(unsigned char * resp, int len,
 }
 
 /* Returns 1 if processed page, 0 otherwise */
+/* STATS_LPAGE, CACHE_STATS_SUBPG */
 static int
 show_cache_stats_page(unsigned char * resp, int len,
                       const struct opts_t * optsp)
@@ -2475,6 +2524,7 @@ show_cache_stats_page(unsigned char * resp, int len,
     return 1;
 }
 
+/* FORMAT_STATUS_LPAGE */
 static void
 show_format_status_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -2615,24 +2665,44 @@ show_non_volatile_cache_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* LB_PROV_LPAGE [0xc] */
 static void
-show_thin_provisioning_page(unsigned char * resp, int len, int show_pcb)
+show_lb_provisioning_page(unsigned char * resp, int len, int show_pcb)
 {
     int j, num, pl, pc, pcb;
     unsigned char * ucp;
     char * cp;
     char str[PCB_STR_LEN];
 
-    printf("Thin provisioning page (sbc-3) [0xc]\n");
+    printf("Logical block provisioning page (sbc-3) [0xc]\n");
     num = len - 4;
     ucp = &resp[0] + 4;
     while (num > 3) {
         pc = (ucp[0] << 8) | ucp[1];
         pcb = ucp[2];
         pl = ucp[3] + 4;
-        if ((pc >= 0x1) && (pc <= 0x2)) {
-            cp = (0x1 == pc)? "Available" : "Used";
-            printf("  %s LBA mapping threshold resource count:", cp);
+        switch (pc) {
+        case 0x1:
+            cp = "  Available LBA mapping threshold";
+            break;
+        case 0x2:
+            cp = "  Used LBA mapping threshold";
+            break;
+        case 0x100:
+            cp = "  De-duplicated LBA";
+            break;
+        case 0x101:
+            cp = "  Compressed LBA";
+            break;
+        case 0x102:
+            cp = "  Total efficiency LBA";
+            break;
+        default:
+            cp = NULL;
+            break;
+        }
+        if (cp) {
+            printf("  %s resource count:", cp);
             if ((pl < 8) || (num < 8)) {
                 if (num < 8)
                     fprintf(stderr, "\n    truncated by response length, "
@@ -2644,6 +2714,15 @@ show_thin_provisioning_page(unsigned char * resp, int len, int show_pcb)
             }
             j = (ucp[4] << 24) + (ucp[5] << 16) + (ucp[6] << 8) + ucp[7];
             printf(" %d\n", j);
+            if (pl > 8) {
+                switch (ucp[8] & 0x3) {
+                case 0: cp = "not reported"; break;
+                case 1: cp = "dedicated to lu"; break;
+                case 2: cp = "not dedicated to lu"; break;
+                case 3: cp = "reserved"; break;
+                }
+                printf("    Scope: %s\n", cp);
+            }
         } else if ((pc >= 0xfff0) && (pc <= 0xffff)) {
             printf("  Vendor specific [0x%x]:", pc);
             dStrHex((const char *)ucp, ((pl < num) ? pl : num), 0);
@@ -2660,6 +2739,7 @@ show_thin_provisioning_page(unsigned char * resp, int len, int show_pcb)
     }
 }
 
+/* SOLID_STATE_MEDIA_LPAGE */
 static void
 show_solid_state_media_page(unsigned char * resp, int len, int show_pcb)
 {
@@ -3541,7 +3621,7 @@ show_ascii_page(unsigned char * resp, int len,
     case LAST_N_ERR_LPAGE:      /* 0x7 */
         show_last_n_error_page(resp, len, optsp->do_pcb);
         break;
-    case 0x8:
+    case FORMAT_STATUS_LPAGE:   /* 0x8 */
         {
             switch (inq_dat->peripheral_type) {
             case PDT_DISK: case PDT_WO: case PDT_OPTICAL: case PDT_RBC:
@@ -3560,8 +3640,8 @@ show_ascii_page(unsigned char * resp, int len,
     case 0xc:
         {
             switch (inq_dat->peripheral_type) {
-            case PDT_DISK:
-                show_thin_provisioning_page(resp, len, optsp->do_pcb);
+            case PDT_DISK: /* LB_PROV_LPAGE */
+                show_lb_provisioning_page(resp, len, optsp->do_pcb);
                 break;
             case PDT_TAPE: case PDT_PRINTER:
                 /* tape and (printer) type devices */
@@ -3643,7 +3723,7 @@ show_ascii_page(unsigned char * resp, int len,
             }
         }
         break;
-    case PORT_SPECIFIC_LPAGE:
+    case PROTO_SPECIFIC_LPAGE:
         done = show_protocol_specific_page(resp, len, optsp);
         break;
     case STATS_LPAGE: /* defined for subpages 0 to 32 inclusive */
@@ -3739,7 +3819,7 @@ fetchTemperature(int sg_fd, unsigned char * resp, int max_len,
         if (optsp->do_raw)
             dStrRaw((const char *)resp, len);
         else if (optsp->do_hex)
-            dStrHex((const char *)resp, len, 1);
+            dStrHex((const char *)resp, len, (1 == optsp->do_hex));
         else
             show_temperature_page(resp, len, optsp->do_pcb, 0, 0);
     }else if (SG_LIB_CAT_NOT_READY == res)
@@ -3752,7 +3832,7 @@ fetchTemperature(int sg_fd, unsigned char * resp, int max_len,
             if (optsp->do_raw)
                 dStrRaw((const char *)resp, len);
             else if (optsp->do_hex)
-                dStrHex((const char *)resp, len, 1);
+                dStrHex((const char *)resp, len, (1 == optsp->do_hex));
             else
                 show_ie_page(resp, len, 0, 0);
         } else
@@ -3821,7 +3901,7 @@ main(int argc, char * argv[])
                     "implying other pages\n");
             return SG_LIB_FILE_ERROR;
         }
-        opts.pg_code = PORT_SPECIFIC_LPAGE;
+        opts.pg_code = PROTO_SPECIFIC_LPAGE;
     }
     pg_len = 0;
 
@@ -3885,7 +3965,7 @@ main(int argc, char * argv[])
         if (opts.do_raw)
             dStrRaw((const char *)rsp_buff, pg_len + 4);
         else if (opts.do_hex > 1)
-            dStrHex((const char *)rsp_buff, pg_len + 4, 1);
+            dStrHex((const char *)rsp_buff, pg_len + 4, (2 == opts.do_hex));
         else if (pg_len > 1) {
             if (opts.do_hex) {
                 if (rsp_buff[0] & 0x40)
@@ -3935,7 +4015,8 @@ main(int argc, char * argv[])
                 if (opts.do_raw)
                     dStrRaw((const char *)rsp_buff, pg_len + 4);
                 else if (opts.do_hex > 1)
-                    dStrHex((const char *)rsp_buff, pg_len + 4, 1);
+                    dStrHex((const char *)rsp_buff, pg_len + 4,
+                            (2 == opts.do_hex));
                 else if (opts.do_hex) {
                     if (rsp_buff[0] & 0x40)
                         printf("Log page code=0x%x,0x%x, DS=%d, SPF=1, page_"
