@@ -1,3 +1,23 @@
+/* A utility program for the Linux OS SCSI generic ("sg") device driver.
+*  Copyright (C) 2001 - 2013 D. Gilbert
+*  This program is free software; you can redistribute it and/or modify
+*  it under the terms of the GNU General Public License as published by
+*  the Free Software Foundation; either version 2, or (at your option)
+*  any later version.
+
+   This program reads data from the given SCSI device (typically a disk
+   or cdrom) and discards that data. Its primary goal is to time
+   multiple reads all starting from the same logical address. Its interface
+   is a subset of another member of this package: sg_dd which is a
+   "dd" variant. The input file can be a scsi generic device, a block device,
+   a raw device or a seekable file. Streams such as stdin are not acceptable.
+   The block size ('bs') is assumed to be 512 if not given.
+
+   This version should compile with Linux sg drivers with version numbers
+   >= 30000 . For mmap-ed IO the sg version number >= 30122 .
+
+*/
+
 #define _XOPEN_SOURCE 500
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -27,27 +47,8 @@
 #include "sg_lib.h"
 #include "sg_io_linux.h"
 
-/* A utility program for the Linux OS SCSI generic ("sg") device driver.
-*  Copyright (C) 2001 - 2007 D. Gilbert
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
 
-   This program reads data from the given SCSI device (typically a disk
-   or cdrom) and discards that data. Its primary goal is to time
-   multiple reads all starting from the same logical address. Its interface
-   is a subset of another member of this package: sg_dd which is a
-   "dd" variant. The input file can be a scsi generic device, a block device,
-   a raw device or a seekable file. Streams such as stdin are not acceptable.
-   The block size ('bs') is assumed to be 512 if not given.
-
-   This version should compile with Linux sg drivers with version numbers
-   >= 30000 . For mmap-ed IO the sg version number >= 30122 .
-
-*/
-
-static const char * version_str = "1.18 20071226";
+static const char * version_str = "1.20 20131014";
 
 #define DEF_BLOCK_SIZE 512
 #define DEF_BLOCKS_PER_TRANSFER 128
@@ -60,7 +61,7 @@ static const char * version_str = "1.18 20071226";
 #define SG_FLAG_MMAP_IO 4
 #endif
 
-#define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
+#define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
 #define DEF_TIMEOUT 40000       /* 40,000 millisecs == 40 seconds */
 
 #ifndef RAW_MAJOR
@@ -104,8 +105,9 @@ static void print_stats(int iters, const char * str)
 {
     if (orig_count > 0) {
         if (0 != dd_count)
-            fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
-        fprintf(stderr, "%"PRId64"+%d records in", in_full - in_partial,
+            fprintf(stderr, "  remaining block count=%" PRId64 "\n",
+                    dd_count);
+        fprintf(stderr, "%" PRId64 "+%d records in", in_full - in_partial,
                 in_partial);
         if (iters > 0)
             fprintf(stderr, ", %s commands issued: %d\n", (str ? str : ""),
@@ -131,7 +133,7 @@ static void interrupt_handler(int sig)
 
 static void siginfo_handler(int sig)
 {
-    sig = sig;  /* dummy to stop -W warning messages */
+    if (sig) { ; }      /* unused, dummy to suppress warning */
     fprintf(stderr, "Progress report, continuing ...\n");
     print_stats(0, NULL);
 }
@@ -189,7 +191,8 @@ static void usage()
            "    no_dxfer 1->DMA to kernel buffers only, not user space, "
            "0->normal(def)\n"
            "    odir     1->open block device O_DIRECT, 0->don't (def)\n"
-           "    skip     each transfer starts at this logical address (def=0)\n"
+           "    skip     each transfer starts at this logical address "
+           "(def=0)\n"
            "    time     0->do nothing(def), 1->time from 1st cmd, 2->time "
            "from 2nd, ...\n"
            "    verbose  increase level of verbosity (def: 0)\n"
@@ -305,8 +308,8 @@ static int sg_bread(int sg_fd, unsigned char * buff, int blocks,
     struct sg_io_hdr io_hdr;
 
     if (sg_build_scsi_cdb(rdCmd, cdbsz, blocks, from_block, 0, fua, dpo)) {
-        fprintf(stderr, ME "bad cdb build, from_block=%"PRId64", blocks=%d\n",
-                from_block, blocks);
+        fprintf(stderr, ME "bad cdb build, from_block=%" PRId64
+                ", blocks=%d\n", from_block, blocks);
         return -1;
     }
     memset(&io_hdr, 0, sizeof(struct sg_io_hdr));
@@ -316,7 +319,8 @@ static int sg_bread(int sg_fd, unsigned char * buff, int blocks,
     if (blocks > 0) {
         io_hdr.dxfer_direction = SG_DXFER_FROM_DEV;
         io_hdr.dxfer_len = bs * blocks;
-        if (! do_mmap) /* not required: shows dxferp unused during mmap-ed IO */
+        /* next: shows dxferp unused during mmap-ed IO */
+        if (! do_mmap)
             io_hdr.dxferp = buff;
         if (diop && *diop)
             io_hdr.flags |= SG_FLAG_DIRECT_IO;
@@ -419,7 +423,11 @@ int main(int argc, char * argv[])
     int ret = 0;
     size_t psz;
 
-    psz = getpagesize();
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+    psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
+#else
+    psz = 4096;     /* give up, pick likely figure */
+#endif
     inf[0] = '\0';
 
     for (k = 1; k < argc; k++) {
@@ -650,6 +658,7 @@ int main(int argc, char * argv[])
                         "storage\n");
                 return SG_LIB_CAT_OTHER;
             }
+            /* perhaps use posix_memalign() instead */
             wrkPos = (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
                                        (~(psz - 1)));
         } else if (do_mmap) {
@@ -674,7 +683,7 @@ int main(int argc, char * argv[])
     start_tm.tv_usec = 0;
 
     if (verbose && (dd_count < 0))
-        fprintf(stderr, "About to issue %"PRId64" zero block SCSI READs\n",
+        fprintf(stderr, "About to issue %" PRId64 " zero block SCSI READs\n",
                 0 - dd_count);
 
     /* main loop */
@@ -751,7 +760,8 @@ int main(int argc, char * argv[])
                    (EINTR == errno))
                 ;
             if (res < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "reading, skip=%"PRId64" ", skip);
+                snprintf(ebuff, EBUFF_SZ, ME "reading, skip=%" PRId64 " ",
+                         skip);
                 perror(ebuff);
                 break;
             } else if (res < blocks * bs) {

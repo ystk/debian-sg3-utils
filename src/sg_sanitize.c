@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Douglas Gilbert.
+ * Copyright (c) 2011-2013 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -26,7 +26,7 @@
 #include "sg_cmds_basic.h"
 #include "sg_cmds_extra.h"
 
-static char * version_str = "0.90 20110622";
+static const char * version_str = "0.93 20130927";
 
 /* Not all environments support the Unix sleep() */
 #if defined(MSC_VER) || defined(__MINGW32__)
@@ -44,6 +44,10 @@ static char * version_str = "0.90 20110622";
 
 #define SANITIZE_OP 0x48
 #define SANITIZE_OP_LEN 10
+#define SANITIZE_SA_OVERWRITE 0x1
+#define SANITIZE_SA_BLOCK_ERASE 0x2
+#define SANITIZE_SA_CRYPTO_ERASE 0x3
+#define SANITIZE_SA_EXIT_FAIL_MODE 0x1f
 #define DEF_REQS_RESP_LEN 252
 #define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
 #define MAX_XFER_LEN 65535
@@ -56,16 +60,19 @@ static char * version_str = "0.90 20110622";
 
 
 static struct option long_options[] = {
+    {"ause", no_argument, 0, 'A'},
     {"block", no_argument, 0, 'B'},
     {"count", required_argument, 0, 'c'},
     {"crypto", no_argument, 0, 'C'},
     {"early", no_argument, 0, 'e'},
+    {"fail", no_argument, 0, 'F'},
     {"help", no_argument, 0, 'h'},
     {"invert", no_argument, 0, 'I'},
     {"ipl", required_argument, 0, 'i'},
     {"overwrite", no_argument, 0, 'O'},
     {"pattern", required_argument, 0, 'p'},
     {"quick", no_argument, 0, 'Q'},
+    {"test", required_argument, 0, 'T'},
     {"verbose", no_argument, 0, 'v'},
     {"version", no_argument, 0, 'V'},
     {"wait", no_argument, 0, 'w'},
@@ -73,13 +80,16 @@ static struct option long_options[] = {
 };
 
 struct opts_t {
+    int ause;
     int block;
     int count;
     int crypto;
     int early;
+    int fail;
     int invert;
     int ipl;    /* initialization pattern length */
     int overwrite;
+    int test;
     int quick;
     int verbose;
     int wait;
@@ -92,13 +102,14 @@ static void
 usage()
 {
   fprintf(stderr, "Usage: "
-          "sg_sanitize [--block] [--count=OC] [--crypto] [--early] "
-          "[--help]\n"
-          "                   [--invert] [--ipl=LEN] [--overwrite] "
-          "[--pattern=PF]\n"
-          "                   [--quick] [--verbose] [--version] [--wait] "
-          "DEVICE\n"
+          "sg_sanitize [--ause] [--block] [--count=OC] [--crypto] [--early]\n"
+          "                   [--fail] [--help] [--invert] [--ipl=LEN] "
+          "[--overwrite]\n"
+          "                   [--pattern=PF] [--quick] [--test=TE] "
+          "[--verbose]\n"
+          "                   [--version] [--wait] DEVICE\n"
           "  where:\n"
+          "    --ause|-A            set AUSE bit in cdb\n"
           "    --block|-B           do BLOCK ERASE sanitize\n"
           "    --count=OC|-c OC     OC is overwrite count field (from 1 "
           "(def) to 31)\n"
@@ -107,6 +118,7 @@ usage()
           "in cdb)\n"
           "                         user can monitor progress with REQUEST "
           "SENSE\n"
+          "    --fail|-F            do EXIT FAILURE MODE sanitize\n"
           "    --help|-h            print out usage message\n"
           "    --invert|-I          set INVERT bit in OVERWRITE parameter "
           "list\n"
@@ -119,6 +131,9 @@ usage()
           "    --quick|-Q           start sanitize without pause for user\n"
           "                         intervention (i.e. no time to "
           "reconsider)\n"
+          "    --test=TE|-T TE      TE is placed in TEST field of "
+          "OVERWRITE\n"
+          "                         parameter list (def: 0)\n"
           "    --verbose|-v         increase verbosity\n"
           "    --version|-V         print version string then exit\n"
           "    --wait|-w            wait for command to finish (could "
@@ -149,15 +164,19 @@ do_sanitize(int sg_fd, const struct opts_t * op, const void * param_lstp,
     memset(sanCmdBlk, 0, sizeof(sanCmdBlk));
     sanCmdBlk[0] = SANITIZE_OP;
     if (op->overwrite)
-        sanCmdBlk[1] = 1;
+        sanCmdBlk[1] = SANITIZE_SA_OVERWRITE;
     else if (op->block)
-        sanCmdBlk[1] = 2;
+        sanCmdBlk[1] = SANITIZE_SA_BLOCK_ERASE;
     else if (op->crypto)
-        sanCmdBlk[1] = 3;
+        sanCmdBlk[1] = SANITIZE_SA_CRYPTO_ERASE;
+    else if (op->fail)
+        sanCmdBlk[1] = SANITIZE_SA_EXIT_FAIL_MODE;
     else
         return SG_LIB_SYNTAX_ERROR;
     if (immed)
         sanCmdBlk[1] |= 0x80;
+    if (op->ause)
+        sanCmdBlk[1] |= 0x20;
     sanCmdBlk[7] = ((param_lst_len >> 8) & 0xff);
     sanCmdBlk[8] = (param_lst_len & 0xff);
 
@@ -169,7 +188,7 @@ do_sanitize(int sg_fd, const struct opts_t * op, const void * param_lstp,
     }
     if ((op->verbose > 2) && (param_lst_len > 0)) {
         fprintf(stderr, "    Parameter list contents:\n");
-        dStrHex((const char *)param_lstp, param_lst_len, 1);
+        dStrHexErr((const char *)param_lstp, param_lst_len, 1);
     }
     ptvp = construct_scsi_pt_obj();
     if (NULL == ptvp) {
@@ -207,7 +226,7 @@ do_sanitize(int sg_fd, const struct opts_t * op, const void * param_lstp,
                 valid = sg_get_sense_info_fld(sense_b, slen, &ull);
                 if (valid)
                     fprintf(stderr, "Medium or hardware error starting at "
-                            "lba=%"PRIu64" [0x%"PRIx64"]\n", ull, ull);
+                            "lba=%" PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
             }
             ret = sense_cat;
             break;
@@ -244,12 +263,15 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "Bc:Cehi:IOp:QvVw", long_options,
+        c = getopt_long(argc, argv, "ABc:CeFhi:IOp:QT:vVw", long_options,
                         &option_index);
         if (c == -1)
             break;
 
         switch (c) {
+        case 'A':
+            ++opts.ause;
+            break;
         case 'B':
             ++opts.block;
             break;
@@ -266,6 +288,9 @@ main(int argc, char * argv[])
             break;
         case 'e':
             ++opts.early;
+            break;
+        case 'F':
+            ++opts.fail;
             break;
         case 'h':
         case '?':
@@ -290,6 +315,13 @@ main(int argc, char * argv[])
             break;
         case 'Q':
             ++opts.quick;
+            break;
+        case 'T':
+            opts.test = sg_get_num(optarg);
+            if ((opts.test < 0) || (opts.test > 3))  {
+                fprintf(stderr, "bad argument to '--test', expect 0 to 3\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             break;
         case 'v':
             ++opts.verbose;
@@ -325,10 +357,10 @@ main(int argc, char * argv[])
         return SG_LIB_SYNTAX_ERROR;
     }
     vb = opts.verbose;
-    n = !!opts.block + !!opts.crypto + !!opts.overwrite;
+    n = !!opts.block + !!opts.crypto + !!opts.fail + !!opts.overwrite;
     if (1 != n) {
-        fprintf(stderr, "one and only one of '--block', '--crypto' or "
-                "'--overwrite' please\n");
+        fprintf(stderr, "one and only one of '--block', '--crypto', "
+                "'--fail' or '--overwrite' please\n");
         return SG_LIB_SYNTAX_ERROR;
     }
     if (opts.overwrite) {
@@ -341,9 +373,8 @@ main(int argc, char * argv[])
         if (! got_stdin) {
             memset(&a_stat, 0, sizeof(a_stat));
             if (stat(opts.pattern_fn, &a_stat) < 0) {
-                if (vb)
-                    fprintf(stderr, "unable to stat(%s): %s\n",
-                            opts.pattern_fn, safe_strerror(errno));
+                fprintf(stderr, "pattern file: unable to stat(%s): %s\n",
+                        opts.pattern_fn, safe_strerror(errno));
                 return SG_LIB_FILE_ERROR;
             }
             if (opts.ipl <= 0) {
@@ -362,7 +393,7 @@ main(int argc, char * argv[])
         }
 
     }
-    
+
     sg_fd = sg_cmds_open_device(device_name, 0 /* rw */, vb);
     if (sg_fd < 0) {
         fprintf(stderr, ME "open error: %s: %s\n", device_name,
@@ -424,14 +455,16 @@ main(int argc, char * argv[])
         if (! got_stdin)
             close(infd);
 
-        wBuff[0] = opts.count;
+        wBuff[0] = opts.count & 0x1f;;
+        if (opts.test)
+            wBuff[0] |= ((opts.test & 0x3) << 5);
         if (opts.invert)
             wBuff[0] |= 0x80;
         wBuff[2] = ((opts.ipl >> 8) & 0xff);
         wBuff[3] = (opts.ipl & 0xff);
     }
 
-    if (0 == opts.quick) {
+    if ((0 == opts.quick) && (! opts.fail)) {
         printf("\nA SANITIZE will commence in 15 seconds\n");
         printf("    ALL data on %s will be DESTROYED\n", device_name);
         printf("        Press control-C to abort\n");
@@ -509,7 +542,7 @@ main(int argc, char * argv[])
             resp_len = requestSenseBuff[7] + 8;
             if (vb > 2) {
                 fprintf(stderr, "Parameter data in hex\n");
-                dStrHex((const char *)requestSenseBuff, resp_len, 1);
+                dStrHexErr((const char *)requestSenseBuff, resp_len, 1);
             }
             progress = -1;
             sg_get_sense_progress_fld(requestSenseBuff, resp_len,

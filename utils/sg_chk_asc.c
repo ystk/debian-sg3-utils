@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2010 Douglas Gilbert.
+ * Copyright (c) 2006-2012 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -25,7 +25,7 @@
  * http://www.t10.org/lists/asc-num.txt
  */
 
-static char * version_str = "1.03 20100312";
+static char * version_str = "1.04 20120920";
 
 
 #define MAX_LINE_LEN 1024
@@ -163,9 +163,17 @@ printf("\"%s\",\n", b);
                 continue;
             }
             num = strlen(cp);
-// fprintf(stderr, "file: asc=%x  acsq=%x  strlen=%d %s\n", asc, ascq, num, cp);
+// fprintf(stderr, "file: asc=%x  acsq=%x  strlen=%d %s\n", asc, ascq, num,
+//         cp);
 //            if (num < 20)
 //                continue;
+            if ((num > 6) &&
+                ((0 == memcmp("ASC", cp, 3)) ||
+                 (0 == memcmp("vendor", cp, 6)))) {
+                fprintf(stderr, "%x,%x differ, ref: %s, sg_lib_data: "
+                        "<missing>\n", asc, ascq, b);
+                continue;
+            }
             if (num > 20) {
                 cp += 18;
                 num -= 18;
@@ -173,7 +181,7 @@ printf("\"%s\",\n", b);
                     cp[j] = toupper(cp[j]);
             }
             if (0 != strcmp(b, cp))
-                fprintf(stderr, "%x,%x differ, ref: %s, sg_lib: "
+                fprintf(stderr, "%x,%x differ, ref: %s, sg_lib_data: "
                         "%s\n", asc, ascq, b, cp);
         }
     }

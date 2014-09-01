@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2011 Luben Tuikov and Douglas Gilbert.
+ * Copyright (c) 2006-2013 Luben Tuikov and Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -25,7 +25,7 @@
  * This utility issues the SCSI READ BUFFER command to the given device.
  */
 
-static char * version_str = "1.07 20110216";
+static const char * version_str = "1.09 20130507";
 
 
 static struct option long_options[] = {
@@ -78,9 +78,9 @@ usage()
 #define MODE_ERR_HISTORY        0x1C
 
 static struct mode_s {
-        char *mode_string;
+        const char *mode_string;
         int   mode;
-        char *comment;
+        const char *comment;
 } modes[] = {
         { "hd",         MODE_HEADER_DATA, "combined header and data"},
         { "vendor",     MODE_VENDOR,    "vendor specific"},
@@ -305,8 +305,8 @@ main(int argc, char * argv[])
             switch (rb_mode) {
             case MODE_DESCRIPTOR:
                 k = (resp[1] << 16) | (resp[2] << 8) | resp[3];
-                printf("OFFSET BOUNDARY: %d, Buffer offset alignment: %d-byte\n",
-                       resp[0], (1 << resp[0]));
+                printf("OFFSET BOUNDARY: %d, Buffer offset alignment: "
+                       "%d-byte\n", resp[0], (1 << resp[0]));
                 printf("BUFFER CAPACITY: %d (0x%x)\n", k, k);
                 break;
             case MODE_ECHO_BDESC:
@@ -316,7 +316,7 @@ main(int argc, char * argv[])
                 printf("Echo buffer capacity: %d (0x%x)\n", k, k);
                 break;
             default:
-                dStrHex((const char *)resp, rb_len, 1);
+                dStrHex((const char *)resp, rb_len, (verbose > 1 ? 0 : 1));
                 break;
             }
         }

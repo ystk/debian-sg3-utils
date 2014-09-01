@@ -1,3 +1,34 @@
+/* A utility program for copying files. Specialised for "files" that
+ * represent devices that understand the SCSI command set.
+ *
+ * Copyright (C) 1999 - 2013 D. Gilbert and P. Allworth
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2, or (at your option)
+ * any later version.
+
+   This program is a specialisation of the Unix "dd" command in which
+   either the input or the output file is a scsi generic device or a
+   raw device. The block size ('bs') is assumed to be 512 if not given.
+   This program complains if 'ibs' or 'obs' are given with a value
+   that differs from 'bs' (or the default 512).
+   If 'if' is not given or 'if=-' then stdin is assumed. If 'of' is
+   not given or 'of=-' then stdout assumed.
+
+   A non-standard argument "bpt" (blocks per transfer) is added to control
+   the maximum number of blocks in each transfer. The default value is 128.
+   For example if "bs=512" and "bpt=32" then a maximum of 32 blocks (16 KiB
+   in this case) is transferred to or from the sg device in a single SCSI
+   command.
+
+   This version uses memory-mapped transfers (i.e. mmap() call from the user
+   space) to speed transfers. If both sides of copy are sg devices
+   then only the read side will be mmap-ed, while the write side will
+   use normal IO.
+
+   This version is designed for the linux kernel 2.4, 2.6 and 3 series.
+*/
+
 #define _XOPEN_SOURCE 500
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -30,43 +61,13 @@
 #include "sg_cmds_basic.h"
 #include "sg_io_linux.h"
 
-/* A utility program for copying files. Specialised for "files" that
-*  represent devices that understand the SCSI command set.
-*
-*  Copyright (C) 1999 - 2011 D. Gilbert and P. Allworth
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-
-   This program is a specialisation of the Unix "dd" command in which
-   either the input or the output file is a scsi generic device or a
-   raw device. The block size ('bs') is assumed to be 512 if not given.
-   This program complains if 'ibs' or 'obs' are given with a value
-   that differs from 'bs' (or the default 512).
-   If 'if' is not given or 'if=-' then stdin is assumed. If 'of' is
-   not given or 'of=-' then stdout assumed.
-
-   A non-standard argument "bpt" (blocks per transfer) is added to control
-   the maximum number of blocks in each transfer. The default value is 128.
-   For example if "bs=512" and "bpt=32" then a maximum of 32 blocks (16 KiB
-   in this case) is transferred to or from the sg device in a single SCSI
-   command.
-
-   This version uses memory-mapped transfers (i.e. mmap() call from the user
-   space) to speed transfers. If both sides of copy are sg devices
-   then only the read side will be mmap-ed, while the write side will
-   use normal IO.
-
-   This version is designed for the linux kernel 2.4 and 2.6 series.
-*/
 
 /* #define SG_WANT_SHARED_MMAP_IO 1 */
 
 #ifdef SG_WANT_SHARED_MMAP_IO
-static char * version_str = "1.36 20111014 shared_mmap";
+static const char * version_str = "1.38 20131014 shared_mmap";
 #else
-static char * version_str = "1.36 20111014";
+static const char * version_str = "1.38 20131014";
 #endif
 
 #define DEF_BLOCK_SIZE 512
@@ -83,7 +84,7 @@ static char * version_str = "1.36 20111014";
 #define SG_FLAG_MMAP_IO 4
 #endif
 
-#define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
+#define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
 
@@ -175,9 +176,10 @@ static void
 print_stats()
 {
     if (0 != dd_count)
-        fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
-    fprintf(stderr, "%"PRId64"+%d records in\n", in_full - in_partial, in_partial);
-    fprintf(stderr, "%"PRId64"+%d records out\n", out_full - out_partial,
+        fprintf(stderr, "  remaining block count=%" PRId64 "\n", dd_count);
+    fprintf(stderr, "%" PRId64 "+%d records in\n", in_full - in_partial,
+            in_partial);
+    fprintf(stderr, "%" PRId64 "+%d records out\n", out_full - out_partial,
             out_partial);
 }
 
@@ -227,7 +229,7 @@ interrupt_handler(int sig)
 static void
 siginfo_handler(int sig)
 {
-    sig = sig;  /* dummy to stop -W warning messages */
+    if (sig) { ; }      /* unused, dummy to suppress warning */
     fprintf(stderr, "Progress report, continuing ...\n");
     print_stats();
     if (do_time)
@@ -372,8 +374,8 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
                    (rcBuff[6] << 8) | rcBuff[7];
     }
     if (verbose)
-        fprintf(stderr, "      number of blocks=%"PRId64" [0x%"PRIx64"], block "
-                "size=%d\n", *num_sect, *num_sect, *sect_sz);
+        fprintf(stderr, "      number of blocks=%" PRId64 " [0x%" PRIx64
+                "], block size=%d\n", *num_sect, *num_sect, *sect_sz);
     return 0;
 }
 
@@ -397,8 +399,9 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
         }
         *num_sect = ((int64_t)ull / (int64_t)*sect_sz);
         if (verbose)
-            fprintf(stderr, "      [bgs64] number of blocks=%"PRId64" [0x%"PRIx64"], "
-                    "block size=%d\n", *num_sect, *num_sect, *sect_sz);
+            fprintf(stderr, "      [bgs64] number of blocks=%" PRId64 " [0x%"
+                    PRIx64 "], block size=%d\n", *num_sect, *num_sect,
+                    *sect_sz);
  #else
         unsigned long ul;
 
@@ -408,8 +411,9 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
         }
         *num_sect = (int64_t)ul;
         if (verbose)
-            fprintf(stderr, "      [bgs] number of blocks=%"PRId64" [0x%"PRIx64"], "
-                    " block size=%d\n", *num_sect, *num_sect, *sect_sz);
+            fprintf(stderr, "      [bgs] number of blocks=%" PRId64 " [0x%"
+                    PRIx64 "], block size=%d\n", *num_sect, *num_sect,
+                    *sect_sz);
  #endif
     }
     return 0;
@@ -528,8 +532,8 @@ sg_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     int k, res;
 
     if (sg_build_scsi_cdb(rdCmd, cdbsz, blocks, from_block, 0, fua, dpo)) {
-        fprintf(stderr, ME "bad rd cdb build, from_block=%"PRId64", blocks=%d\n",
-                from_block, blocks);
+        fprintf(stderr, ME "bad rd cdb build, from_block=%" PRId64
+                ", blocks=%d\n", from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
     memset(&io_hdr, 0, sizeof(struct sg_io_hdr));
@@ -623,8 +627,8 @@ sg_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     int k, res;
 
     if (sg_build_scsi_cdb(wrCmd, cdbsz, blocks, to_block, 1, fua, dpo)) {
-        fprintf(stderr, ME "bad wr cdb build, to_block=%"PRId64", blocks=%d\n",
-                to_block, blocks);
+        fprintf(stderr, ME "bad wr cdb build, to_block=%" PRId64
+                ", blocks=%d\n", to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
 
@@ -804,7 +808,7 @@ main(int argc, char * argv[])
     int n, flags;
     char ebuff[EBUFF_SZ];
     int blocks_per;
-    size_t psz = getpagesize();
+    size_t psz;
     struct flags_t in_flags;
     struct flags_t out_flags;
 #ifdef SG_WANT_SHARED_MMAP_IO
@@ -812,6 +816,11 @@ main(int argc, char * argv[])
 #endif
     int ret = 0;
 
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+    psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
+#else
+    psz = 4096;     /* give up, pick likely figure */
+#endif
     inf[0] = '\0';
     outf[0] = '\0';
     memset(&in_flags, 0, sizeof(in_flags));
@@ -845,7 +854,7 @@ main(int argc, char * argv[])
             cdbsz_given = 1;
         } else if (0 == strcmp(key,"coe")) {
             do_coe = sg_get_num(buf);   /* dummy, just accept + ignore */
-            do_coe = do_coe;    /* suppress warning */
+            if (do_coe) { ; }   /* unused, dummy to suppress warning */
         } else if (0 == strcmp(key,"count")) {
             if (0 != strcmp("-1", buf)) {
                 dd_count = sg_get_llnum(buf);
@@ -931,7 +940,8 @@ main(int argc, char * argv[])
     }
     if (blk_sz <= 0) {
         blk_sz = DEF_BLOCK_SIZE;
-        fprintf(stderr, "Assume default 'bs' (block size) of %d bytes\n", blk_sz);
+        fprintf(stderr, "Assume default 'bs' (block size) of %d bytes\n",
+                blk_sz);
     }
     if ((ibs && (ibs != blk_sz)) || (obs && (obs != blk_sz))) {
         fprintf(stderr, "If 'ibs' or 'obs' given must be same as 'bs'\n");
@@ -957,8 +967,8 @@ main(int argc, char * argv[])
         bpt = DEF_BLOCKS_PER_2048TRANSFER;
 
 #ifdef SG_DEBUG
-    fprintf(stderr, ME "if=%s skip=%"PRId64" of=%s seek=%"PRId64" count=%"PRId64"\n",
-           inf, skip, outf, seek, dd_count);
+    fprintf(stderr, ME "if=%s skip=%" PRId64 " of=%s seek=%" PRId64 " count=%"
+           PRId64 "\n", inf, skip, outf, seek, dd_count);
 #endif
     install_handler (SIGINT, interrupt_handler);
     install_handler (SIGQUIT, interrupt_handler);
@@ -1051,7 +1061,7 @@ main(int argc, char * argv[])
                 }
                 if (verbose)
                     fprintf(stderr, "  >> skip: lseek64 SEEK_SET, "
-                            "byte offset=0x%"PRIx64"\n",
+                            "byte offset=0x%" PRIx64 "\n",
                             (uint64_t)offset);
             }
         }
@@ -1150,7 +1160,7 @@ main(int argc, char * argv[])
                 }
                 if (verbose)
                     fprintf(stderr, "   >> seek: lseek64 SEEK_SET, "
-                            "byte offset=0x%"PRIx64"\n",
+                            "byte offset=0x%" PRIx64 "\n",
                             (uint64_t)offset);
             }
         }
@@ -1234,14 +1244,14 @@ main(int argc, char * argv[])
         if (out_num_sect > seek)
             out_num_sect -= seek;
 #ifdef SG_DEBUG
-        fprintf(stderr,
-            "Start of loop, count=%"PRId64", in_num_sect=%"PRId64", out_num_sect=%"PRId64"\n",
-            dd_count, in_num_sect, out_num_sect);
+        fprintf(stderr, "Start of loop, count=%" PRId64 ", in_num_sect=%"
+                PRId64 ", out_num_sect=%" PRId64 "\n", dd_count, in_num_sect,
+                out_num_sect);
 #endif
         if (in_num_sect > 0) {
             if (out_num_sect > 0)
                 dd_count = (in_num_sect > out_num_sect) ? out_num_sect :
-                                                       in_num_sect;
+                                                          in_num_sect;
             else
                 dd_count = in_num_sect;
         }
@@ -1300,6 +1310,7 @@ main(int argc, char * argv[])
                 fprintf(stderr, "Not enough user memory for raw\n");
                 return SG_LIB_FILE_ERROR;
             }
+            /* perhaps use posix_memalign() instead */
             wrkPos = (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
                                        (~(psz - 1)));
         }
@@ -1315,7 +1326,7 @@ main(int argc, char * argv[])
 
     blocks_per = bpt;
 #ifdef SG_DEBUG
-    fprintf(stderr, "Start of loop, count=%"PRId64", blocks_per=%d\n",
+    fprintf(stderr, "Start of loop, count=%" PRId64 ", blocks_per=%d\n",
             dd_count, blocks_per);
 #endif
     if (do_time) {
@@ -1349,7 +1360,7 @@ main(int argc, char * argv[])
                               scsi_cdbsz_in, in_flags.fua, in_flags.dpo, 1);
             }
             if (0 != ret) {
-                fprintf(stderr, "sg_read failed, skip=%"PRId64"\n", skip);
+                fprintf(stderr, "sg_read failed, skip=%" PRId64 "\n", skip);
                 break;
             }
             else
@@ -1363,7 +1374,8 @@ main(int argc, char * argv[])
                 fprintf(stderr, "read(unix): count=%d, res=%d\n",
                         blocks * blk_sz, res);
             if (ret < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "reading, skip=%"PRId64" ", skip);
+                snprintf(ebuff, EBUFF_SZ, ME "reading, skip=%" PRId64 " ",
+                         skip);
                 perror(ebuff);
                 ret = -1;
                 break;
@@ -1406,7 +1418,7 @@ main(int argc, char * argv[])
                                &dio_res);
             }
             if (0 != ret) {
-                fprintf(stderr, "sg_write failed, seek=%"PRId64"\n", seek);
+                fprintf(stderr, "sg_write failed, seek=%" PRId64 "\n", seek);
                 break;
             }
             else {
@@ -1425,12 +1437,14 @@ main(int argc, char * argv[])
                 fprintf(stderr, "write(unix): count=%d, res=%d\n",
                         blocks * blk_sz, res);
             if (res < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "writing, seek=%"PRId64" ", seek);
+                snprintf(ebuff, EBUFF_SZ, ME "writing, seek=%" PRId64 " ",
+                         seek);
                 perror(ebuff);
                 break;
             }
             else if (res < blocks * blk_sz) {
-                fprintf(stderr, "output file probably full, seek=%"PRId64" ", seek);
+                fprintf(stderr, "output file probably full, seek=%" PRId64
+                        " ", seek);
                 blocks = res / blk_sz;
                 out_full += blocks;
                 if ((res % blk_sz) > 0)

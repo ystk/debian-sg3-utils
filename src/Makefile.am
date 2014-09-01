@@ -8,16 +8,16 @@ if OS_LINUX
 # sg_scan is shared by Linux and Win32
 
 bin_PROGRAMS = \
-	sg_dd sg_decode_sense sg_emc_trespass sg_format sg_get_config \
-	sg_get_lba_status sg_ident sginfo sg_inq sg_logs sg_luns sg_map26 \
-	sg_map sgm_dd sg_modes sg_opcodes sgp_dd sg_persist sg_prevent \
-	sg_raw sg_rbuf sg_rdac sg_read sg_readcap sg_read_block_limits \
-	sg_read_buffer sg_read_long sg_reassign sg_referrals \
-	sg_requests sg_reset sg_rmsn sg_rtpg sg_safte sg_sanitize \
-	sg_sat_identify sg_sat_phy_event sg_sat_set_features sg_scan \
-	sg_senddiag sg_ses sg_start sg_stpg sg_sync sg_test_rwbuf sg_turs \
-	sg_unmap sg_verify sg_vpd sg_write_buffer sg_write_long \
-	sg_write_same sg_wr_mode
+	sg_compare_and_write sg_copy_results sg_dd sg_decode_sense \
+	sg_emc_trespass sg_format sg_get_config sg_get_lba_status \
+	sg_ident sginfo sg_inq sg_logs sg_luns sg_map26 sg_map sgm_dd \
+	sg_modes sg_opcodes sgp_dd sg_persist sg_prevent sg_raw sg_rbuf \
+	sg_rdac sg_read sg_readcap sg_read_block_limits sg_read_buffer \
+	sg_read_long sg_reassign sg_referrals sg_requests sg_reset sg_rmsn \
+	sg_rtpg sg_safte sg_sanitize sg_sat_identify sg_sat_phy_event \
+	sg_sat_set_features sg_scan sg_senddiag sg_ses sg_start sg_stpg \
+	sg_sync sg_test_rwbuf sg_turs sg_unmap sg_verify sg_vpd \
+	sg_write_buffer sg_write_long sg_write_same sg_wr_mode sg_xcopy
 
 distclean-local:
 	rm -f sg_scan.c
@@ -31,14 +31,15 @@ endif
 if OS_WIN32_MINGW
 
 bin_PROGRAMS = \
-	sg_decode_sense sg_format sg_get_config sg_get_lba_status sg_ident \
-	sg_inq sg_logs sg_luns sg_modes sg_opcodes sg_persist \
-	sg_prevent sg_raw sg_rdac sg_readcap sg_read_block_limits \
-	sg_read_buffer sg_read_long sg_reassign sg_referrals sg_requests \
-	sg_rmsn sg_rtpg sg_safte sg_sanitize sg_sat_identify \
-	sg_sat_phy_event sg_sat_set_features sg_scan sg_senddiag sg_ses \
-	sg_start sg_stpg sg_sync sg_turs sg_unmap sg_verify sg_vpd \
-	sg_write_buffer sg_write_long sg_write_same sg_wr_mode
+	sg_compare_and_write sg_decode_sense sg_format sg_get_config \
+	sg_get_lba_status sg_ident sg_inq sg_logs sg_luns sg_modes \
+	sg_opcodes sg_persist sg_prevent sg_raw sg_rdac sg_readcap \
+	sg_read_block_limits sg_read_buffer sg_read_long sg_reassign \
+	sg_referrals sg_requests sg_rmsn sg_rtpg sg_safte sg_sanitize \
+	sg_sat_identify sg_sat_phy_event sg_sat_set_features sg_scan \
+	sg_senddiag sg_ses sg_start sg_stpg sg_sync sg_turs sg_unmap \
+	sg_verify sg_vpd sg_write_buffer sg_write_long sg_write_same \
+	sg_wr_mode
 
 distclean-local:
 	rm -f sg_scan.c
@@ -52,6 +53,7 @@ endif
 if OS_WIN32_CYGWIN
 
 bin_PROGRAMS = \
+	sg_compare_and_write \
 	sg_decode_sense sg_format sg_get_config sg_get_lba_status sg_ident \
 	sg_inq sg_logs sg_luns sg_modes sg_opcodes sg_persist \
 	sg_prevent sg_raw sg_rdac sg_readcap sg_read_block_limits \
@@ -73,6 +75,7 @@ endif
 if OS_FREEBSD
 
 bin_PROGRAMS = \
+	sg_compare_and_write \
 	sg_decode_sense sg_format sg_get_config sg_get_lba_status sg_ident \
 	sg_inq sg_logs sg_luns sg_modes sg_opcodes sg_persist \
 	sg_prevent sg_raw sg_rdac sg_readcap sg_read_block_limits \
@@ -88,6 +91,7 @@ endif
 if OS_SOLARIS
 
 bin_PROGRAMS = \
+	sg_compare_and_write \
 	sg_decode_sense sg_format sg_get_config sg_get_lba_status sg_ident \
 	sg_inq sg_logs sg_luns sg_modes sg_opcodes sg_persist \
 	sg_prevent sg_raw sg_rdac sg_readcap sg_read_block_limits \
@@ -103,6 +107,7 @@ endif
 if OS_OSF
 
 bin_PROGRAMS = \
+	sg_compare_and_write \
 	sg_decode_sense sg_format sg_get_config sg_get_lba_status sg_ident \
 	sg_inq sg_logs sg_luns sg_modes sg_opcodes sg_persist \
 	sg_prevent sg_raw sg_rdac sg_readcap sg_read_block_limits \
@@ -114,9 +119,16 @@ bin_PROGRAMS = \
 
 endif
 
+# For C++/clang testing
+## CC = g++
+## CC = g++
+## CC = clang
+## CC = clang++
 
+# -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CFLAGS = -I ../include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
-# AM_CFLAGS = -I ../include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
+# AM_CFLAGS = -I ../include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c11
+# AM_CFLAGS = -I ../include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c++11
 
 sg_dd_SOURCES =	sg_dd.c
 sg_dd_LDADD = ../lib/libsgutils2.la @os_libs@
@@ -277,3 +289,11 @@ sg_write_same_LDADD = ../lib/libsgutils2.la @os_libs@
 sg_wr_mode_SOURCES = sg_wr_mode.c
 sg_wr_mode_LDADD = ../lib/libsgutils2.la @os_libs@
 
+sg_xcopy_SOURCES = sg_xcopy.c
+sg_xcopy_LDADD = ../lib/libsgutils2.la @os_libs@
+
+sg_copy_results_SOURCES = sg_copy_results.c
+sg_copy_results_LDADD = ../lib/libsgutils2.la @os_libs@
+
+sg_compare_and_write_SOURCES = sg_compare_and_write.c
+sg_compare_and_write_LDADD = ../lib/libsgutils2.la @os_libs@

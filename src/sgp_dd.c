@@ -1,3 +1,29 @@
+/* A utility program for copying files. Specialised for "files" that
+*  represent devices that understand the SCSI command set.
+*
+*  Copyright (C) 1999 - 2013 D. Gilbert and P. Allworth
+*  This program is free software; you can redistribute it and/or modify
+*  it under the terms of the GNU General Public License as published by
+*  the Free Software Foundation; either version 2, or (at your option)
+*  any later version.
+
+   This program is a specialisation of the Unix "dd" command in which
+   one or both of the given files is a scsi generic device or a raw
+   device. A block size ('bs') is assumed to be 512 if not given. This
+   program complains if 'ibs' or 'obs' are given with some other value
+   than 'bs'. If 'if' is not given or 'if=-' then stdin is assumed. If
+   'of' is not given or 'of=-' then stdout assumed.
+
+   A non-standard argument "bpt" (blocks per transfer) is added to control
+   the maximum number of blocks in each transfer. The default value is 128.
+   For example if "bs=512" and "bpt=32" then a maximum of 32 blocks (16 KiB
+   in this case) are transferred to or from the sg device in a single SCSI
+   command.
+
+   This version is designed for the linux kernel 2.4, 2.6 and 3 series.
+
+*/
+
 #define _XOPEN_SOURCE 500
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -30,33 +56,8 @@
 #include "sg_cmds_basic.h"
 #include "sg_io_linux.h"
 
-/* A utility program for copying files. Specialised for "files" that
-*  represent devices that understand the SCSI command set.
-*
-*  Copyright (C) 1999 - 2007 D. Gilbert and P. Allworth
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
 
-   This program is a specialisation of the Unix "dd" command in which
-   one or both of the given files is a scsi generic device or a raw
-   device. A block size ('bs') is assumed to be 512 if not given. This
-   program complains if 'ibs' or 'obs' are given with some other value
-   than 'bs'. If 'if' is not given or 'if=-' then stdin is assumed. If
-   'of' is not given or 'of=-' then stdout assumed.
-
-   A non-standard argument "bpt" (blocks per transfer) is added to control
-   the maximum number of blocks in each transfer. The default value is 128.
-   For example if "bs=512" and "bpt=32" then a maximum of 32 blocks (16 KiB
-   in this case) are transferred to or from the sg device in a single SCSI
-   command.
-
-   This version is designed for the linux kernel 2.4 and 2.6 series.
-
-*/
-
-static char * version_str = "5.40 20090205";
+static const char * version_str = "5.46 20131110";
 
 #define DEF_BLOCK_SIZE 512
 #define DEF_BLOCKS_PER_TRANSFER 128
@@ -68,7 +69,7 @@ static char * version_str = "5.40 20090205";
 
 /* #define SG_DEBUG */
 
-#define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
+#define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
 
@@ -224,14 +225,14 @@ print_stats(const char * str)
     int64_t infull, outfull;
 
     if (0 != rcoll.out_rem_count)
-        fprintf(stderr, "  remaining block count=%"PRId64"\n",
+        fprintf(stderr, "  remaining block count=%" PRId64 "\n",
                 rcoll.out_rem_count);
     infull = dd_count - rcoll.in_rem_count;
-    fprintf(stderr, "%s%"PRId64"+%d records in\n", str, infull - rcoll.in_partial,
-            rcoll.in_partial);
+    fprintf(stderr, "%s%" PRId64 "+%d records in\n", str,
+            infull - rcoll.in_partial, rcoll.in_partial);
 
     outfull = dd_count - rcoll.out_rem_count;
-    fprintf(stderr, "%s%"PRId64"+%d records out\n", str,
+    fprintf(stderr, "%s%" PRId64 "+%d records out\n", str,
             outfull - rcoll.out_partial, rcoll.out_partial);
 }
 
@@ -254,7 +255,7 @@ interrupt_handler(int sig)
 static void
 siginfo_handler(int sig)
 {
-    sig = sig;  /* dummy to stop -W warning messages */
+    if (sig) { ; }      /* unused, dummy to suppress warning */
     fprintf(stderr, "Progress report, continuing ...\n");
     if (do_time)
         calc_duration_throughput(1);
@@ -292,11 +293,12 @@ tsafe_strerror(int code, char * ebp)
 
 
 /* Following macro from D.R. Butenhof's POSIX threads book:
-   ISBN 0-201-63392-2 . [Highly recommended book.] */
+ * ISBN 0-201-63392-2 . [Highly recommended book.] Changed __FILE__
+ * to __func__ */
 #define err_exit(code,text) do { \
     char strerr_buff[STRERR_BUFF_LEN]; \
     fprintf(stderr, "%s at \"%s\":%d: %s\n", \
-        text, __FILE__, __LINE__, tsafe_strerror(code, strerr_buff)); \
+        text, __func__, __LINE__, tsafe_strerror(code, strerr_buff)); \
     exit(1); \
     } while (0)
 
@@ -364,6 +366,8 @@ usage()
            "    oflag       comma separated list from: [append,coe,dio,direct,"
            "dpo,dsync,\n"
            "                excl,fua,null]\n"
+           "    seek        block position to start writing to OFILE\n"
+           "    skip        block position to start reading from IFILE\n"
            "    sync        0->no sync(def), 1->SYNCHRONIZE CACHE on OFILE "
            "after copy\n"
            "    thr         is number of threads, must be > 0, default 4, "
@@ -531,7 +535,11 @@ read_write_thread(void * v_clp)
     sz = clp->bpt * clp->bs;
     seek_skip =  clp->seek - clp->skip;
     memset(rep, 0, sizeof(Rq_elem));
-    psz = getpagesize();
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+    psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
+#else
+    psz = 4096;     /* give up, pick likely figure */
+#endif
     if (NULL == (rep->alloc_bp = (unsigned char *)malloc(sz + psz)))
         err_exit(ENOMEM, "out of memory creating user buffers\n");
     rep->buffp = (unsigned char *)(((unsigned long)rep->alloc_bp + psz - 1) &
@@ -652,7 +660,7 @@ normal_in_operation(Rq_coll * clp, Rq_elem * rep, int blocks)
     if (res < 0) {
         if (clp->in_flags.coe) {
             memset(rep->buffp, 0, rep->num_blks * rep->bs);
-            fprintf(stderr, ">> substituted zeros for in blk=%"PRId64" for "
+            fprintf(stderr, ">> substituted zeros for in blk=%" PRId64 " for "
                     "%d bytes, %s\n", rep->blk,
                     rep->num_blks * rep->bs,
                     tsafe_strerror(errno, strerr_buff));
@@ -697,7 +705,7 @@ normal_out_operation(Rq_coll * clp, Rq_elem * rep, int blocks)
         ;
     if (res < 0) {
         if (clp->out_flags.coe) {
-            fprintf(stderr, ">> ignored error for out blk=%"PRId64" for "
+            fprintf(stderr, ">> ignored error for out blk=%" PRId64 " for "
                     "%d bytes, %s\n", rep->blk,
                     rep->num_blks * rep->bs,
                     tsafe_strerror(errno, strerr_buff));
@@ -826,7 +834,7 @@ sg_in_operation(Rq_coll * clp, Rq_elem * rep)
         if (1 == res)
             err_exit(ENOMEM, "sg starting in command");
         else if (res < 0) {
-            fprintf(stderr, ME "inputting to sg failed, blk=%"PRId64"\n",
+            fprintf(stderr, ME "inputting to sg failed, blk=%" PRId64 "\n",
                     rep->blk);
             status = pthread_mutex_unlock(&clp->in_mutex);
             if (0 != status) err_exit(status, "unlock in_mutex");
@@ -856,8 +864,8 @@ sg_in_operation(Rq_coll * clp, Rq_elem * rep)
                 return;
             } else {
                 memset(rep->buffp, 0, rep->num_blks * rep->bs);
-                fprintf(stderr, ">> substituted zeros for in blk=%"PRId64" for "
-                        "%d bytes\n", rep->blk, rep->num_blks * rep->bs);
+                fprintf(stderr, ">> substituted zeros for in blk=%" PRId64
+                        " for %d bytes\n", rep->blk, rep->num_blks * rep->bs);
             }
             /* fall through */
         case 0:
@@ -897,7 +905,7 @@ sg_out_operation(Rq_coll * clp, Rq_elem * rep)
         if (1 == res)
             err_exit(ENOMEM, "sg starting out command");
         else if (res < 0) {
-            fprintf(stderr, ME "outputting from sg failed, blk=%"PRId64"\n",
+            fprintf(stderr, ME "outputting from sg failed, blk=%" PRId64 "\n",
                     rep->blk);
             status = pthread_mutex_unlock(&clp->out_mutex);
             if (0 != status) err_exit(status, "unlock out_mutex");
@@ -926,8 +934,8 @@ sg_out_operation(Rq_coll * clp, Rq_elem * rep)
                 guarded_stop_both(clp);
                 return;
             } else
-                fprintf(stderr, ">> ignored error for out blk=%"PRId64" for "
-                        "%d bytes\n", rep->blk, rep->num_blks * rep->bs);
+                fprintf(stderr, ">> ignored error for out blk=%" PRId64
+                        " for %d bytes\n", rep->blk, rep->num_blks * rep->bs);
             /* fall through */
         case 0:
             if (rep->dio_incomplete || rep->resid) {
@@ -966,8 +974,8 @@ sg_start_io(Rq_elem * rep)
 
     if (sg_build_scsi_cdb(rep->cmd, cdbsz, rep->num_blks, rep->blk,
                           rep->wr, fua, dpo)) {
-        fprintf(stderr, ME "bad cdb build, start_blk=%"PRId64", blocks=%d\n",
-                rep->blk, rep->num_blks);
+        fprintf(stderr, ME "bad cdb build, start_blk=%" PRId64
+                ", blocks=%d\n", rep->blk, rep->num_blks);
         return -1;
     }
     memset(hp, 0, sizeof(struct sg_io_hdr));
@@ -985,7 +993,7 @@ sg_start_io(Rq_elem * rep)
     if (dio)
         hp->flags |= SG_FLAG_DIRECT_IO;
     if (rep->debug > 8) {
-        fprintf(stderr, "sg_start_io: SCSI %s, blk=%"PRId64" num_blks=%d\n",
+        fprintf(stderr, "sg_start_io: SCSI %s, blk=%" PRId64 " num_blks=%d\n",
                rep->wr ? "WRITE" : "READ", rep->blk, rep->num_blks);
         sg_print_command(hp->cmdp);
     }
@@ -1051,7 +1059,7 @@ sg_finish_io(int wr, Rq_elem * rep, pthread_mutex_t * a_mutp)
             {
                 char ebuff[EBUFF_SZ];
 
-                snprintf(ebuff, EBUFF_SZ, "%s blk=%"PRId64,
+                snprintf(ebuff, EBUFF_SZ, "%s blk=%" PRId64,
                          wr ? "writing": "reading", rep->blk);
                 status = pthread_mutex_lock(a_mutp);
                 if (0 != status) err_exit(status, "lock aux_mutex");
@@ -1282,6 +1290,7 @@ main(int argc, char * argv[])
         else if (0 == strcmp(key,"time"))
             do_time = sg_get_num(buf);
         else if ((0 == strncmp(key, "--help", 7)) ||
+                 (0 == strncmp(key, "-h", 2)) ||
                  (0 == strcmp(key, "-?"))) {
             usage();
             return 0;
@@ -1330,8 +1339,8 @@ main(int argc, char * argv[])
         return SG_LIB_SYNTAX_ERROR;
     }
     if (rcoll.debug)
-        fprintf(stderr, ME "if=%s skip=%"PRId64" of=%s seek=%"PRId64" count=%"PRId64"\n",
-               inf, skip, outf, seek, dd_count);
+        fprintf(stderr, ME "if=%s skip=%" PRId64 " of=%s seek=%" PRId64
+                " count=%" PRId64 "\n", inf, skip, outf, seek, dd_count);
 
     install_handler(SIGINT, interrupt_handler);
     install_handler(SIGQUIT, interrupt_handler);
@@ -1552,8 +1561,9 @@ main(int argc, char * argv[])
             dd_count = out_num_sect;
     }
     if (rcoll.debug > 1)
-        fprintf(stderr, "Start of loop, count=%"PRId64", in_num_sect=%"PRId64", "
-                "out_num_sect=%"PRId64"\n", dd_count, in_num_sect, out_num_sect);
+        fprintf(stderr, "Start of loop, count=%" PRId64 ", in_num_sect=%"
+                PRId64 ", out_num_sect=%" PRId64 "\n", dd_count, in_num_sect,
+                out_num_sect);
     if (dd_count < 0) {
         fprintf(stderr, "Couldn't calculate count, please give one\n");
         return SG_LIB_CAT_OTHER;
@@ -1666,8 +1676,8 @@ main(int argc, char * argv[])
         close(rcoll.outfd);
     res = exit_status;
     if (0 != rcoll.out_count) {
-        fprintf(stderr, ">>>> Some error occurred, remaining blocks=%"PRId64"\n",
-               rcoll.out_count);
+        fprintf(stderr, ">>>> Some error occurred, remaining blocks=%"
+                PRId64 "\n", rcoll.out_count);
         if (0 == res)
             res = SG_LIB_CAT_OTHER;
     }

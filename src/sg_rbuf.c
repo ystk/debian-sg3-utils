@@ -1,3 +1,16 @@
+/* A utility program originally written for the Linux OS SCSI subsystem.
+ *  Copyright (C) 1999-2013 D. Gilbert
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ * This program uses the SCSI command READ BUFFER on the given
+ * device, first to find out how big it is and then to read that
+ * buffer (data mode, buffer id 0).
+ */
+
+
 #define _XOPEN_SOURCE 500
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -24,19 +37,6 @@
 #include "sg_lib.h"
 #include "sg_io_linux.h"
 
-/* A utility program originally written for the Linux OS SCSI subsystem.
- *  Copyright (C) 1999-2011 D. Gilbert
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- * This program uses the SCSI command READ BUFFER on the given
- * device, first to find out how big it is and then to read that
- * buffer (data mode, buffer id 0).
- */
-
-
 #define RB_MODE_DESC 3
 #define RB_MODE_DATA 2
 #define RB_DESC_LEN 4
@@ -51,7 +51,7 @@
 #endif
 
 
-static char * version_str = "4.89 20110211";
+static const char * version_str = "4.90 20131014";
 
 static struct option long_options[] = {
         {"buffer", 1, 0, 'b'},
@@ -341,7 +341,7 @@ main(int argc, char * argv[])
     int buf_capacity = 0;
     int buf_size = 0;
     int64_t total_size = RB_DEF_SIZE;
-    size_t psz = getpagesize();
+    size_t psz;
     int dio_incomplete = 0;
     struct sg_io_hdr io_hdr;
     struct timeval start_tm, end_tm;
@@ -350,6 +350,11 @@ main(int argc, char * argv[])
 #endif
     struct opts_t opts;
 
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+    psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
+#else
+    psz = 4096;     /* give up, pick likely figure */
+#endif
     memset(&opts, 0, sizeof(opts));
     res = process_cl(&opts, argc, argv);
     if (res)
@@ -486,6 +491,7 @@ main(int argc, char * argv[])
             printf("out of memory (data)\n");
             return SG_LIB_CAT_OTHER;
         }
+        /* perhaps use posix_memalign() instead */
         if (opts.do_dio)    /* align to page boundary */
             rbBuff= (unsigned char *)(((unsigned long)rawp + psz - 1) &
                                       (~(psz - 1)));
@@ -608,8 +614,8 @@ main(int argc, char * argv[])
     }
     if (dio_incomplete)
         printf(">> direct IO requested but not done\n");
-    printf("Read %"PRId64" MiB (actual: %"PRId64" bytes), buffer size=%d KiB "
-           "(%d bytes)\n", (total_size / (1024 * 1024)),
+    printf("Read %" PRId64 " MiB (actual: %" PRId64 " bytes), buffer "
+           "size=%d KiB (%d bytes)\n", (total_size / (1024 * 1024)),
            (int64_t)num * buf_size, buf_size / 1024, buf_size);
 
     if (rawp) free(rawp);

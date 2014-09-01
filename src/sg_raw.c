@@ -1,7 +1,7 @@
 /*
  * A utility program originally written for the Linux OS SCSI subsystem.
  *
- * Copyright (C) 2000-2011 Ingo van Lil <inguin@gmx.de>
+ * Copyright (C) 2000-2013 Ingo van Lil <inguin@gmx.de>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -11,6 +11,8 @@
  * This program can be used to send raw SCSI commands (with an optional
  * data phase) through a Generic SCSI interface.
  */
+
+#define _XOPEN_SOURCE 600       /* clear up posix_memalign() warning */
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -25,7 +27,22 @@
 #include "sg_lib.h"
 #include "sg_pt.h"
 
-#define SG_RAW_VERSION "0.4.3 (2011-02-25)"
+#define SG_RAW_VERSION "0.4.8 (2013-12-19)"
+
+#ifdef SG_LIB_WIN32
+#ifndef HAVE_SYSCONF
+#include <windows.h>
+
+static size_t
+win_pagesize(void)
+{
+    SYSTEM_INFO sys_info;
+
+    GetSystemInfo(&sys_info);
+    return sys_info.dwPageSize;
+}
+#endif
+#endif
 
 #define DEFAULT_TIMEOUT 20
 #define MIN_SCSI_CDBSZ 6
@@ -73,7 +90,7 @@ version()
 {
     fprintf(stderr,
             "sg_raw " SG_RAW_VERSION "\n"
-            "Copyright (C) 2007-2010 Ingo van Lil <inguin@gmx.de>\n"
+            "Copyright (C) 2007-2012 Ingo van Lil <inguin@gmx.de>\n"
             "This is free software.  You may redistribute copies of it "
             "under the terms of\n"
             "the GNU General Public License "
@@ -233,24 +250,47 @@ process_cl(struct opts_t *optsp, int argc, char *argv[])
 static unsigned char *
 my_memalign(int length, unsigned char ** wrkBuffp)
 {
-    unsigned char * wrkBuff;
     size_t psz;
 
-#ifdef SG_LIB_MINGW
-    psz = getpagesize();
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+    psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
+#elif defined(SG_LIB_WIN32)
+    psz = win_pagesize();
 #else
-    psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
+    psz = 4096;     /* give up, pick likely figure */
 #endif
-    wrkBuff = (unsigned char*)calloc(length + psz, 1);
-    if (NULL == wrkBuff) {
+
+#ifdef HAVE_POSIX_MEMALIGN
+    {
+        int err;
+        void * wp = NULL;
+
+        err = posix_memalign(&wp, psz, length);
+        if (err || (NULL == wp)) {
+            fprintf(stderr, "posix_memalign: error [%d], out of memory?\n",
+                    err);
+            return NULL;
+        }
+        memset(wp, 0, length);
         if (wrkBuffp)
-            *wrkBuffp = NULL;
-        return NULL;
-    } else if (wrkBuffp)
-        *wrkBuffp = wrkBuff;
-    // posix_memalign() could be a better way to do this
-    return (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
-                             (~(psz - 1)));
+            *wrkBuffp = (unsigned char *)wp;
+        return (unsigned char *)wp;
+    }
+#else
+    {
+        unsigned char * wrkBuff;
+
+        wrkBuff = (unsigned char*)calloc(length + psz, 1);
+        if (NULL == wrkBuff) {
+            if (wrkBuffp)
+                *wrkBuffp = NULL;
+            return NULL;
+        } else if (wrkBuffp)
+            *wrkBuffp = wrkBuff;
+        return (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
+                                 (~(psz - 1)));
+    }
+#endif
 }
 
 static int
@@ -379,7 +419,7 @@ int
 main(int argc, char *argv[])
 {
     int ret = 0;
-    int res_cat, slen, k, ret2;
+    int res_cat, status, slen, k, ret2;
     struct opts_t opts;
     int sg_fd = -1;
     struct sg_pt_base *ptvp = NULL;
@@ -387,6 +427,7 @@ main(int argc, char *argv[])
     unsigned char * dxfer_buffer_in = NULL;
     unsigned char * dxfer_buffer_out = NULL;
     unsigned char *wrkBuf = NULL;
+    char b[128];
 
     memset(&opts, 0, sizeof(opts));
     opts.timeout = DEFAULT_TIMEOUT;
@@ -421,6 +462,11 @@ main(int argc, char *argv[])
         for (k = 0; k < opts.cdb_length; ++k)
             fprintf(stderr, "%02x ", opts.cdb[k]);
         fprintf(stderr, "\n");
+        if (opts.do_verbose > 2) {
+            sg_get_command_name(opts.cdb, 0, sizeof(b) - 1, b);
+            b[sizeof(b) - 1] = '\0';
+            fprintf(stderr, "    Command name: %s\n", b);
+        }
     }
     set_scsi_pt_cdb(ptvp, opts.cdb, opts.cdb_length);
     set_scsi_pt_sense(ptvp, sense_buffer, sizeof(sense_buffer));
@@ -432,7 +478,7 @@ main(int argc, char *argv[])
             goto done;
         }
         set_scsi_pt_data_out(ptvp, dxfer_buffer_out, opts.dataout_len);
-    } 
+    }
     if (opts.do_datain) {
         dxfer_buffer_in = my_memalign(opts.datain_len, &wrkBuf);
         if (dxfer_buffer_in == NULL) {
@@ -459,23 +505,49 @@ main(int argc, char *argv[])
         ret = SG_LIB_CAT_OTHER;
         goto done;
     }
+
     slen = 0;
     res_cat = get_scsi_pt_result_category(ptvp);
-    if (SCSI_PT_RESULT_GOOD == res_cat)
+    switch (res_cat) {
+    case SCSI_PT_RESULT_GOOD:
         ret = 0;
-    else if (SCSI_PT_RESULT_SENSE == res_cat) {
+        break;
+    case SCSI_PT_RESULT_SENSE:
         slen = get_scsi_pt_sense_len(ptvp);
         ret = sg_err_category_sense(sense_buffer, slen);
-    } else
+        break;
+    case SCSI_PT_RESULT_TRANSPORT_ERR:
+        get_scsi_pt_transport_err_str(ptvp, sizeof(b), b);
+        fprintf(sg_warnings_strm, ">>> transport error: %s\n", b);
         ret = SG_LIB_CAT_OTHER;
+        break;
+    case SCSI_PT_RESULT_OS_ERR:
+        get_scsi_pt_os_err_str(ptvp, sizeof(b), b);
+        fprintf(sg_warnings_strm, ">>> os error: %s\n", b);
+        ret = SG_LIB_CAT_OTHER;
+        break;
+    default:
+        fprintf(sg_warnings_strm, ">>> unknown pass through result "
+                "category (%d)\n", res_cat);
+        ret = SG_LIB_CAT_OTHER;
+        break;
+    }
 
+    status = get_scsi_pt_status_response(ptvp);
     fprintf(stderr, "SCSI Status: ");
-    sg_print_scsi_status(get_scsi_pt_status_response(ptvp));
+    sg_print_scsi_status(status);
     fprintf(stderr, "\n\n");
-    if (! opts.no_sense) {
-        fprintf(stderr, "Sense Information:\n");
-        sg_print_sense(NULL, sense_buffer, slen, (opts.do_verbose > 0));
-        fprintf(stderr, "\n");
+    if ((SAM_STAT_CHECK_CONDITION == status) && (! opts.no_sense)) {
+        if (SCSI_PT_RESULT_SENSE != res_cat)
+            slen = get_scsi_pt_sense_len(ptvp);
+        if (0 == slen)
+            fprintf(stderr, ">>> Strange: status is CHECK CONDITION but no "
+                    "Sense Information\n");
+        else {
+            fprintf(stderr, "Sense Information:\n");
+            sg_print_sense(NULL, sense_buffer, slen, (opts.do_verbose > 0));
+            fprintf(stderr, "\n");
+        }
     }
 
     if (opts.do_datain) {
@@ -485,7 +557,7 @@ main(int argc, char *argv[])
         } else {
             if (opts.datain_file == NULL && !opts.datain_binary) {
                 fprintf(stderr, "Received %d bytes of data:\n", data_len);
-                dStrHex((const char *)dxfer_buffer_in, data_len, 0);
+                dStrHexErr((const char *)dxfer_buffer_in, data_len, 0);
             } else {
                 const char * cp = "stdout";
 
