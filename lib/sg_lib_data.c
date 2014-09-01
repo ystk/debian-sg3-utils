@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2011 Douglas Gilbert.
+ * Copyright (c) 2007-2014 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -15,8 +15,9 @@
 #endif
 
 
-const char * sg_lib_version_str = "1.71 20111025";  /* spc4r33, sbc3r29 */
+const char * sg_lib_version_str = "1.96 20140401";  /* spc4r36s, sbc4r01 */
 
+#ifdef SG_SCSI_STRINGS
 struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0, 0, "Test Unit Ready"},
     {0x1, 0, "Rezero Unit"},
@@ -28,9 +29,9 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x5, 0, "Read Block Limits"},
     {0x7, 0, "Reassign Blocks"},
     {0x7, PDT_MCHANGER, "Initialize element status"},
-    {0x8, 0, "Read(6)"},
+    {0x8, 0, "Read(6)"},        /* obsolete in sbc3r30 */
     {0x8, PDT_PROCESSOR, "Receive"},
-    {0xa, 0, "Write(6)"},
+    {0xa, 0, "Write(6)"},       /* obsolete in sbc3r30 */
     {0xa, PDT_PRINTER, "Print"},
     {0xa, PDT_PROCESSOR, "Send"},
     {0xb, 0, "Seek(6)"},
@@ -43,14 +44,14 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x12, 0, "Inquiry"},
     {0x13, 0, "Verify(6)"},  /* SSC */
     {0x14, 0, "Recover buffered data"},
-    {0x15, 0, "Mode select(6)"},
+    {0x15, 0, "Mode select(6)"}, /* SBC-3 r31 recommends Mode select(10) */
     {0x16, 0, "Reserve(6)"},    /* obsolete in SPC-4 r11 */
     {0x16, PDT_MCHANGER, "Reserve element(6)"},
     {0x17, 0, "Release(6)"},    /* obsolete in SPC-4 r11 */
     {0x17, PDT_MCHANGER, "Release element(6)"},
     {0x18, 0, "Copy"},          /* obsolete in SPC-4 r11 */
     {0x19, 0, "Erase(6)"},
-    {0x1a, 0, "Mode sense(6)"},
+    {0x1a, 0, "Mode sense(6)"}, /* SBC-3 r31 recommends Mode sense(10) */
     {0x1b, 0, "Start stop unit"},
     {0x1b, PDT_TAPE, "Load unload"},
     {0x1b, PDT_ADC, "Load unload"},
@@ -61,26 +62,30 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x23, 0, "Read Format capacities"},
     {0x24, 0, "Set window"},
     {0x25, 0, "Read capacity(10)"},
+                        /* SBC-3 r31 recommends Read capacity(16) */
     {0x25, PDT_OCRW, "Read card capacity"},
-    {0x28, 0, "Read(10)"},
+    {0x28, 0, "Read(10)"},      /* SBC-3 r31 recommends Read(16) */
     {0x29, 0, "Read generation"},
-    {0x2a, 0, "Write(10)"},
+    {0x2a, 0, "Write(10)"},     /* SBC-3 r31 recommends Write(16) */
     {0x2b, 0, "Seek(10)"},
     {0x2b, PDT_TAPE, "Locate(10)"},
     {0x2b, PDT_MCHANGER, "Position to element"},
     {0x2c, 0, "Erase(10)"},
     {0x2d, 0, "Read updated block"},
     {0x2e, 0, "Write and verify(10)"},
-    {0x2f, 0, "Verify(10)"},
+                        /* SBC-3 r31 recommends Write and verify(16) */
+    {0x2f, 0, "Verify(10)"},    /* SBC-3 r31 recommends Verify(16) */
     {0x30, 0, "Search data high(10)"},
     {0x31, 0, "Search data equal(10)"},
     {0x32, 0, "Search data low(10)"},
     {0x33, 0, "Set limits(10)"},
-    {0x34, 0, "Pre-fetch(10)"},
+    {0x34, 0, "Pre-fetch(10)"}, /* SBC-3 r31 recommends Pre-fetch(16) */
     {0x34, PDT_TAPE, "Read position"},
     {0x35, 0, "Synchronize cache(10)"},
+                        /* SBC-3 r31 recommends Synchronize cache(16) */
     {0x36, 0, "Lock unlock cache(10)"},
     {0x37, 0, "Read defect data(10)"},
+                        /* SBC-3 r31 recommends Read defect data(12) */
     {0x37, PDT_MCHANGER, "Initialize element status with range"},
     {0x38, 0, "Medium scan"},
     {0x39, 0, "Compare"},               /* obsolete in SPC-4 r11 */
@@ -88,10 +93,10 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x3b, 0, "Write buffer"},
     {0x3c, 0, "Read buffer"},
     {0x3d, 0, "Update block"},
-    {0x3e, 0, "Read long(10)"},
-    {0x3f, 0, "Write long(10)"},
+    {0x3e, 0, "Read long(10)"},  /* SBC-3 r31 recommends Read long(16) */
+    {0x3f, 0, "Write long(10)"}, /* SBC-3 r31 recommends Write long(16) */
     {0x40, 0, "Change definition"},     /* obsolete in SPC-4 r11 */
-    {0x41, 0, "Write same(10)"},
+    {0x41, 0, "Write same(10)"}, /* SBC-3 r31 recommends Write same(16) */
     {0x42, 0, "Unmap"},                 /* added SPC-4 rev 18 */
     {0x42, PDT_MMC, "Read sub-channel"},
     {0x43, PDT_MMC, "Read TOC/PMA/ATIP"},
@@ -105,10 +110,10 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x4c, 0, "Log select"},
     {0x4d, 0, "Log sense"},
     {0x4e, 0, "Stop play/scan"},
-    {0x50, 0, "Xdwrite(10)"},
+    {0x50, 0, "Xdwrite(10)"},           /* obsolete in SBC-3 r31 */
     {0x51, 0, "Xpwrite(10)"},
     {0x51, PDT_MMC, "Read disk information"},
-    {0x52, 0, "Xdread(10)"},
+    {0x52, 0, "Xdread(10)"},            /* obsolete in SBC-3 r31 */
     {0x52, PDT_MMC, "Read track information"},
     {0x53, 0, "Reserve track"},
     {0x54, 0, "Send OPC information"},
@@ -130,9 +135,10 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x81, 0, "Rebuild(16)"},
     {0x81, PDT_TAPE, "Read reverse(16)"},
     {0x82, 0, "Regenerate(16)"},
-    {0x83, 0, "Extended copy"},
-    {0x84, 0, "Receive copy results"},
-    {0x85, 0, "ATA command pass through(16)"},  /* was 0x98 in spc3 rev21c */
+    {0x83, 0, "Third party copy out"},  /* Extended copy, before spc4r34 */
+        /* Following was "Receive copy results", before spc4r34 */
+    {0x84, 0, "Third party copy in"},
+    {0x85, 0, "ATA pass-through(16)"},  /* was 0x98 in spc3 rev21c */
     {0x86, 0, "Access control in"},
     {0x87, 0, "Access control out"},
     {0x88, 0, "Read(16)"},
@@ -150,10 +156,11 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0x92, PDT_TAPE, "Locate(16)"},
     {0x93, 0, "Write same(16)"},
     {0x93, PDT_TAPE, "Erase(16)"},
+    {0x9d, 0, "Service action bidirectional"},  /* added spc4r35 */
     {0x9e, 0, "Service action in(16)"},
     {0x9f, 0, "Service action out(16)"},
     {0xa0, 0, "Report luns"},
-    {0xa1, 0, "ATA command pass through(12)"},
+    {0xa1, 0, "ATA pass-through(12)"},
     {0xa1, PDT_MMC, "Blank"},
     {0xa2, 0, "Security protocol in"},
     {0xa3, 0, "Maintenance in"},
@@ -166,15 +173,16 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0xa6, PDT_MMC, "Load/unload medium"},
     {0xa7, 0, "Move medium attached"},
     {0xa7, PDT_MMC, "Set read ahead"},
-    {0xa8, 0, "Read(12)"},
+    {0xa8, 0, "Read(12)"},      /* SBC-3 r31 recommends Read(16) */
     {0xa9, 0, "Service action out(12)"},
-    {0xaa, 0, "Write(12)"},
+    {0xaa, 0, "Write(12)"},     /* SBC-3 r31 recommends Write(16) */
     {0xab, 0, "Service action in(12)"},
     {0xac, 0, "erase(12)"},
     {0xac, PDT_MMC, "Get performance"},
     {0xad, PDT_MMC, "Read DVD/BD structure"},
     {0xae, 0, "Write and verify(12)"},
-    {0xaf, 0, "Verify(12)"},
+                        /* SBC-3 r31 recommends Write and verify(16) */
+    {0xaf, 0, "Verify(12)"},    /* SBC-3 r31 recommends Verify(16) */
     {0xb0, 0, "Search data high(12)"},
     {0xb1, 0, "Search data equal(12)"},
     {0xb1, PDT_MCHANGER, "Open/close import/export element"},
@@ -202,7 +210,36 @@ struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_maint_in_arr[] = {
+struct sg_lib_value_name_t sg_lib_read_buff_arr[] = {  /* opcode 0x3c */
+    {0x0, 0, "combined header and data [or multiple modes]"},
+    {0x2, 0, "data"},
+    {0x3, 0, "descriptor"},
+    {0xa, 0, "read data from echo buffer"},
+    {0xb, 0, "echo buffer descriptor"},
+    {0x1a, 0, "enable expander comms protocol and echo buffer"},
+    {0x1c, 0, "error history"},
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_write_buff_arr[] = {  /* opcode 0x3b */
+    {0x0, 0, "combined header and data [or multiple modes]"},
+    {0x2, 0, "data"},
+    {0x4, 0, "download microcode and activate"},
+    {0x5, 0, "download microcode, save, and activate"},
+    {0x6, 0, "download microcode with offsets and activate"},
+    {0x7, 0, "download microcode with offsets, save, and activate"},
+    {0xa, 0, "write data to echo buffer"},
+    {0xd, 0, "download microcode with offsets, select activation events, "
+             " save and defer activate"},
+    {0xe, 0, "download microcode with offsets, save and defer activate"},
+    {0xf, 0, "activate deferred microcode"},
+    {0x1a, 0, "enable expander comms protocol and echo buffer"},
+    {0x1b, 0, "disable expander comms protocol"},
+    {0x1c, 0, "download application client error history"},
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_maint_in_arr[] = {  /* opcode 0xa3 */
     {0x5, 0, "Report identifying information"},
                 /* was "Report device identifier" prior to spc4r07 */
     {0xa, 0, "Report target port groups"},
@@ -211,32 +248,33 @@ struct sg_lib_value_name_t sg_lib_maint_in_arr[] = {
     {0xd, 0, "Report supported task management functions"},
     {0xe, 0, "Report priority"},
     {0xf, 0, "Report timestamp"},
-    {0x10, 0, "Maintenance in"},
+    {0x10, 0, "Management protocol in"},
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_maint_out_arr[] = {
+struct sg_lib_value_name_t sg_lib_maint_out_arr[] = {  /* opcode 0xa4 */
     {0x6, 0, "Set identifying information"},
                 /* was "Set device identifier" prior to spc4r07 */
     {0xa, 0, "Set target port groups"},
     {0xb, 0, "Change aliases"},
+    {0xc, 0, "Remove I_T nexus"},
     {0xe, 0, "Set priority"},
     {0xf, 0, "Set timestamp"},
-    {0x10, 0, "Maintenance out"},
+    {0x10, 0, "Management protocol out"},
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_serv_in12_arr[] = {
+struct sg_lib_value_name_t sg_lib_serv_in12_arr[] = { /* opcode 0xab */
     {0x1, 0, "Read media serial number"},
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_serv_out12_arr[] = {
+struct sg_lib_value_name_t sg_lib_serv_out12_arr[] = { /* opcode 0xa9 */
     {0xff, 0, "Impossible command name"},
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_serv_in16_arr[] = {
+struct sg_lib_value_name_t sg_lib_serv_in16_arr[] = { /* opcode 0x9e */
     {0x10, 0, "Read capacity(16)"},
     {0x11, 0, "Read long(16)"},
     {0x12, 0, "Get LBA status"},
@@ -244,13 +282,17 @@ struct sg_lib_value_name_t sg_lib_serv_in16_arr[] = {
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_serv_out16_arr[] = {
+struct sg_lib_value_name_t sg_lib_serv_out16_arr[] = { /* opcode 0x9f */
     {0x11, 0, "Write long(16)"},
     {0x1f, PDT_ADC, "Notify data transfer device(16)"},
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_pr_in_arr[] = {
+struct sg_lib_value_name_t sg_lib_serv_bidi_arr[] = { /* opcode 0x9d */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_pr_in_arr[] = { /* opcode 0x5e */
     {0x0, 0, "Persistent reserve in, read keys"},
     {0x1, 0, "Persistent reserve in, read reservation"},
     {0x2, 0, "Persistent reserve in, report capabilities"},
@@ -258,7 +300,7 @@ struct sg_lib_value_name_t sg_lib_pr_in_arr[] = {
     {0xffff, 0, NULL},
 };
 
-struct sg_lib_value_name_t sg_lib_pr_out_arr[] = {
+struct sg_lib_value_name_t sg_lib_pr_out_arr[] = { /* opcode 0x5f */
     {0x0, 0, "Persistent reserve out, register"},
     {0x1, 0, "Persistent reserve out, reserve"},
     {0x2, 0, "Persistent reserve out, release"},
@@ -267,14 +309,40 @@ struct sg_lib_value_name_t sg_lib_pr_out_arr[] = {
     {0x5, 0, "Persistent reserve out, preempt and abort"},
     {0x6, 0, "Persistent reserve out, register and ignore existing key"},
     {0x7, 0, "Persistent reserve out, register and move"},
+    {0x8, 0, "Persistent reserve out, replace lost reservation"},
+    {0xffff, 0, NULL},
+};
+
+/* 'Extended copy' was renamed 'Third party copy in' in spc4r34 */
+/* LID1 is an abbreviation of List Identifier length of 1 byte */
+struct sg_lib_value_name_t sg_lib_xcopy_sa_arr[] = { /* opcode 0x83 */
+    {0x0, 0, "Extended copy(LID1)"},
+    {0x1, 0, "Extended copy(LID4)"},
+    {0x10, 0, "Populate token"},
+    {0x11, 0, "Write using token"},
+    {0x1c, 0, "Copy operation abort"},
+    {0xffff, 0, NULL},
+};
+
+/* 'Receive copy results' was renamed 'Third party copy out' in spc4r34 */
+/* LID4 is an abbreviation of List Identifier length of 4 bytes */
+struct sg_lib_value_name_t sg_lib_rec_copy_sa_arr[] = { /* opcode 0x84 */
+    {0x0, 0, "Receive copy status(LID1)"},
+    {0x1, 0, "Receive copy data(LID1)"},
+    {0x3, 0, "Receive copy operating parameters"},
+    {0x4, 0, "Receive copy failure details(LID1)"},
+    {0x5, 0, "Receive copy status(LID4)"},
+    {0x6, 0, "Receive copy data(LID4)"},
+    {0x7, 0, "Receive ROD token information"},
+    {0x8, 0, "Report all ROD tokens"},
     {0xffff, 0, NULL},
 };
 
 struct sg_lib_value_name_t sg_lib_variable_length_arr[] = {
     {0x1, 0, "Rebuild(32)"},
     {0x2, 0, "Regenerate(32)"},
-    {0x3, 0, "Xdread(32)"},
-    {0x4, 0, "Xdwrite(32)"},
+    {0x3, 0, "Xdread(32)"},     /* obsolete in SBC-3 r31 */
+    {0x4, 0, "Xdwrite(32)"},    /* obsolete in SBC-3 r31 */
     {0x5, 0, "Xdwrite extended(32)"},
     {0x6, 0, "Xpwrite(32)"},
     {0x7, 0, "Xdwriteread(32)"},
@@ -342,10 +410,75 @@ struct sg_lib_value_name_t sg_lib_variable_length_arr[] = {
     {0x8f7f, 0, "Perform task management function (osd)"},
     {0xffff, 0, NULL},
 };
+#else
+
+struct sg_lib_value_name_t sg_lib_normal_opcodes[] = {
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_read_buff_arr[] = {  /* opcode 0x3c */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_write_buff_arr[] = {  /* opcode 0x3b */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_maint_in_arr[] = {  /* opcode 0xa3 */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_maint_out_arr[] = {  /* opcode 0xa4 */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_serv_in12_arr[] = { /* opcode 0xab */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_serv_out12_arr[] = { /* opcode 0xa9 */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_serv_in16_arr[] = { /* opcode 0x9e */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_serv_out16_arr[] = { /* opcode 0x9f */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_serv_bidi_arr[] = { /* opcode 0x9d */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_pr_in_arr[] = { /* opcode 0x5e */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_pr_out_arr[] = { /* opcode 0x5f */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_xcopy_sa_arr[] = { /* opcode 0x83 */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_rec_copy_sa_arr[] = { /* opcode 0x84 */
+    {0xffff, 0, NULL},
+};
+
+struct sg_lib_value_name_t sg_lib_variable_length_arr[] = {
+    {0xffff, 0, NULL},
+};
+
+#endif
 
 /* A conveniently formatted list of SCSI ASC/ASCQ codes and their
- * corresponding text can be found at: www.t10.org/lists/asc-num.txt */
+ * corresponding text can be found at: www.t10.org/lists/asc-num.txt
+ * The following should match asc-num.txt dated 20140320 */
 
+#ifdef SG_SCSI_STRINGS
 struct sg_lib_asc_ascq_range_t sg_lib_asc_ascq_range[] =
 {
     {0x40,0x01,0x7f,"Ram failure [0x%x]"},
@@ -382,6 +515,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x00,0x1d,"ATA pass through information available"},
     {0x00,0x1e,"Conflicting SA creation request"},
     {0x00,0x1f,"Logical unit transitioning to another power condition"},
+    {0x00,0x20,"Extended copy information available"},
     {0x01,0x00,"No index/sector signal"},
     {0x02,0x00,"No seek complete"},
     {0x03,0x00,"Peripheral device write fault"},
@@ -422,6 +556,12 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x04,0x1b,"Logical unit not ready, sanitize in progress"},
     {0x04,0x1c,"Logical unit not ready, additional power use not yet "
                 "granted"},
+    {0x04,0x1d,"Logical unit not ready, configuration in progress"},
+    {0x04,0x1e,"Logical unit not ready, microcode activation required"},
+    {0x04,0x1f,"Logical unit not ready, microcode download required"},
+    {0x04,0x20,"Logical unit not ready, logical unit reset required"},
+    {0x04,0x21,"Logical unit not ready, hard reset required"},
+    {0x04,0x22,"Logical unit not ready, power cycle required"},
     {0x05,0x00,"Logical unit does not respond to selection"},
     {0x06,0x00,"No reference position found"},
     {0x07,0x00,"Multiple peripheral devices selected"},
@@ -445,6 +585,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x0B,0x06,"Warning - non-volatile cache now volatile"},
     {0x0B,0x07,"Warning - degraded power to non-volatile cache"},
     {0x0B,0x08,"Warning - power loss expected"},
+    {0x0B,0x09,"Warning - device statistics notification active"},
     {0x0C,0x00,"Write error"},
     {0x0C,0x01,"Write error - recovered with auto reallocation"},
     {0x0C,0x02,"Write error - auto reallocation failed"},
@@ -459,6 +600,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x0C,0x0B,"Auxiliary memory write error"},
     {0x0C,0x0C,"Write error - unexpected unsolicited data"},
     {0x0C,0x0D,"Write error - not enough unsolicited data"},
+    {0x0C,0x0E,"Multiple write errors"},
     {0x0C,0x0F,"Defects in error window"},
     {0x0D,0x00,"Error detected by third party temporary initiator"},
     {0x0D,0x01,"Third party device failure"},
@@ -497,6 +639,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x11,0x12,"Auxiliary memory read error"},
     {0x11,0x13,"Read error - failed retransmission request"},
     {0x11,0x14,"Read error - LBA marked bad by application client"},
+    {0x11,0x15,"Write after sanitize required"},
     {0x12,0x00,"Address mark not found for id field"},
     {0x13,0x00,"Address mark not found for data field"},
     {0x14,0x00,"Recorded entity not found"},
@@ -566,6 +709,17 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x21,0x03,"Invalid write crossing layer jump"},
     {0x22,0x00,"Illegal function (use 20 00, 24 00, or 26 00)"},
     {0x23,0x00,"Invalid token operation, cause not reportable"},
+    {0x23,0x01,"Invalid token operation, unsupported token type"},
+    {0x23,0x02,"Invalid token operation, remote token usage not supported"},
+    {0x23,0x03,"invalid token operation, remote rod token creation not "
+               "supported"},
+    {0x23,0x04,"Invalid token operation, token unknown"},
+    {0x23,0x05,"Invalid token operation, token corrupt"},
+    {0x23,0x06,"Invalid token operation, token revoked"},
+    {0x23,0x07,"Invalid token operation, token expired"},
+    {0x23,0x08,"Invalid token operation, token cancelled"},
+    {0x23,0x09,"Invalid token operation, token deleted"},
+    {0x23,0x0a,"Invalid token operation, invalid token length"},
     {0x24,0x00,"Invalid field in cdb"},
     {0x24,0x01,"CDB decryption error"},
     {0x24,0x02,"Invalid cdb field while in explicit block model (obs)"},
@@ -634,6 +788,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x2A,0x0a,"Error history i_t nexus cleared"},
     {0x2A,0x0b,"Error history snapshot released"},
     {0x2A,0x14,"SA creation capabilities data has changed"},
+    {0x2A,0x15,"Medium removal prevention preempted"},
     {0x2B,0x00,"Copy cannot execute since host cannot disconnect"},
     {0x2C,0x00,"Command sequence error"},
     {0x2C,0x01,"Too many windows specified"},
@@ -650,9 +805,13 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x2C,0x0C,"ORWRITE generation does not match"},
     {0x2D,0x00,"Overwrite error on update in place"},
     {0x2E,0x00,"Insufficient time for operation"},
+    {0x2E,0x01,"Command timeout before processing"},
+    {0x2E,0x02,"Command timeout during processing"},
+    {0x2E,0x03,"Command timeout during processing due to error recovery"},
     {0x2F,0x00,"Commands cleared by another initiator"},
     {0x2F,0x01,"Commands cleared by power loss notification"},
     {0x2F,0x02,"Commands cleared by device server"},
+    {0x2F,0x03,"Some commands cleared by queuing layer event"},
     {0x30,0x00,"Incompatible medium installed"},
     {0x30,0x01,"Cannot read medium - unknown format"},
     {0x30,0x02,"Cannot read medium - incompatible format"},
@@ -725,6 +884,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x3B,0x19,"Element enabled"},
     {0x3B,0x1a,"Data transfer device removed"},
     {0x3B,0x1b,"Data transfer device inserted"},
+    {0x3B,0x1c,"Too many logical objects on partition to support operation"},
     {0x3D,0x00,"Invalid bits in identify message"},
     {0x3E,0x00,"Logical unit has not self-configured yet"},
     {0x3E,0x01,"Logical unit failure"},
@@ -752,6 +912,8 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x3F,0x12,"iSCSI IP address added"},
     {0x3F,0x13,"iSCSI IP address removed"},
     {0x3F,0x14,"iSCSI IP address changed"},
+    {0x3F,0x15,"Inspect referrals sense descriptors"},
+    {0x3F,0x16,"Microcode has been changed without reset"},
 
     /*
      * ASC 0x40, 0x41 and 0x42 overridden by "additional2" array entries
@@ -764,6 +926,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
 
     {0x43,0x00,"Message error"},
     {0x44,0x00,"Internal target failure"},
+    {0x44,0x01,"Persistent reservation information lost"},
     {0x44,0x71,"ATA device failed Set Features"},
     {0x45,0x00,"Select or reselect failure"},
     {0x46,0x00,"Unsuccessful soft reset"},
@@ -786,6 +949,20 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x4B,0x05,"Data offset error"},
     {0x4B,0x06,"Initiator response timeout"},
     {0x4B,0x07,"Connection lost"},
+    {0x4B,0x08,"Data-in buffer overflow - data buffer size"},
+    {0x4B,0x09,"Data-in buffer overflow - data buffer descriptor area"},
+    {0x4B,0x0A,"Data-in buffer error"},
+    {0x4B,0x0B,"Data-out buffer overflow - data buffer size"},
+    {0x4B,0x0C,"Data-out buffer overflow - data buffer descriptor area"},
+    {0x4B,0x0D,"Data-out buffer error"},
+    {0x4B,0x0E,"PCIe fabric error"},
+    {0x4B,0x0f,"PCIe completion timeout"},
+    {0x4B,0x10,"PCIe completer abort"},
+    {0x4B,0x11,"PCIe poisoned tlp received"},
+    {0x4B,0x12,"PCIe ecrc check failed"},
+    {0x4B,0x13,"PCIe unsupported request"},
+    {0x4B,0x14,"PCIe acs violation"},
+    {0x4B,0x15,"PCIe tlp prefix blocked"},
     {0x4C,0x00,"Logical unit failed self-configuration"},
     /*
      * ASC 0x4D overridden by an "additional2" array entry
@@ -809,6 +986,11 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x53,0x06,"Volume identifier missing"},
     {0x53,0x07,"Duplicate volume identifier"},
     {0x53,0x08,"Element status unknown"},
+    {0x53,0x09,"Data transfer device error - load failed"},
+    {0x53,0x0A,"Data transfer device error - unload failed"},
+    {0x53,0x0B,"Data transfer device error - unload missing"},
+    {0x53,0x0C,"Data transfer device error - eject failed"},
+    {0x53,0x0D,"Data transfer device error - library communication failed"},
     {0x54,0x00,"SCSI to host system interface failure"},
     {0x55,0x00,"System resource failure"},
     {0x55,0x01,"System buffer full"},
@@ -822,6 +1004,8 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x55,0x09,"Medium auxiliary memory not accessible"},
     {0x55,0x0a,"Data currently unavailable"},
     {0x55,0x0b,"Insufficient power for operation"},
+    {0x55,0x0c,"Insufficient resources to create rod"},
+    {0x55,0x0d,"Insufficient resources to create rod token"},
     {0x57,0x00,"Unable to recover table-of-contents"},
     {0x58,0x00,"Generation does not exist"},
     {0x59,0x00,"Updated block read"},
@@ -962,6 +1146,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x67,0x0A,"Set target port groups command failed"},
     {0x67,0x0B,"ATA device feature not enabled"},
     {0x68,0x00,"Logical unit not configured"},
+    {0x68,0x01,"Subsidiary logical unit not configured"},
     {0x69,0x00,"Data loss on logical unit"},
     {0x69,0x01,"Multiple logical unit failures"},
     {0x69,0x02,"Parity/data mismatch"},
@@ -1036,6 +1221,17 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x74,0x79,"Security conflict in translated device"},
     {0, 0, NULL}
 };
+#else
+struct sg_lib_asc_ascq_range_t sg_lib_asc_ascq_range[] =
+{
+    {0, 0, 0, NULL}
+};
+
+struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
+{
+    {0, 0, NULL}
+};
+#endif /* SG_SCSI_STRINGS */
 
 const char * sg_lib_sense_key_desc[] = {
     "No Sense",                 /* Filemark, ILI and/or EOM; progress
@@ -1052,7 +1248,7 @@ const char * sg_lib_sense_key_desc[] = {
     "Data Protect",             /* Access to the data is blocked */
     "Blank Check",              /* Reached unexpected written or unwritten
                                    region of the medium */
-    "Key=9",                    /* Vendor specific */
+    "Vendor specific(9)",       /* Vendor specific */
     "Copy Aborted",             /* COPY or COMPARE was aborted */
     "Aborted Command",          /* The target aborted the command */
     "Equal",                    /* SEARCH DATA found data equal (obsolete) */
@@ -1066,7 +1262,7 @@ const char * sg_lib_pdt_strs[] = {
     /* 0 */ "disk",
     "tape",
     "printer",
-    "processor",        /* often SAF-TE (seldom scanner) device */
+    "processor",        /* often SAF-TE device, copy manager */
     "write once optical disk",
     /* 5 */ "cd/dvd",
     "scanner",                  /* obsolete */
@@ -1083,7 +1279,8 @@ const char * sg_lib_pdt_strs[] = {
     "object based storage",
     "automation/driver interface",
     "security manager device",
-    "0x14", "0x15", "0x16", "0x17", "0x18",
+    "zoned block commands",
+    "0x15", "0x16", "0x17", "0x18",
     "0x19", "0x1a", "0x1b", "0x1c", "0x1d",
     "well known logical unit",
     "no physical device on this lu",
@@ -1091,16 +1288,17 @@ const char * sg_lib_pdt_strs[] = {
 
 const char * sg_lib_transport_proto_strs[] =
 {
-    "Fibre Channel Protocol for SCSI (FCP-2)",
+    "Fibre Channel Protocol for SCSI (FCP-4)",
     "SCSI Parallel Interface (SPI-5)",
     "Serial Storage Architecture SCSI-3 Protocol (SSA-S3P)",
     "Serial Bus Protocol for IEEE 1394 (SBP-3)",
     "SCSI RDMA Protocol (SRP)",
     "Internet SCSI (iSCSI)",
-    "Serial Attached SCSI Protocol (SPL-2)",
+    "Serial Attached SCSI Protocol (SPL-3)",
     "Automation/Drive Interface Transport (ADT-2)",
-    "AT Attachment Interface (ACS-2)",
+    "AT Attachment Interface (ACS-2)",          /* 0x8 */
     "USB Attached SCSI (UAS-2)",
-    "Oxa", "Oxb", "Oxc", "Oxd", "Oxe",
+    "SCSI over PCI Express (SOP)",
+    "Oxb", "Oxc", "Oxd", "Oxe",
     "No specific protocol"
 };

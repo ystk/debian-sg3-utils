@@ -1,4 +1,4 @@
-.TH SGINFO "8" "March 2008" "sg3_utils\-1.26" SG3_UTILS
+.TH SGINFO "8" "January 2014" "sg3_utils\-1.38" SG3_UTILS
 .SH NAME
 sginfo \- access mode page information for a SCSI (or ATAPI) device
 .SH SYNOPSIS
@@ -18,11 +18,14 @@ information. If permitted, mode page information can be altered. In
 addition information from the INQUIRY and READ DEFECTS commands are also
 available.
 .PP
-Those interested in SCSI mode pages may find the
+This utility is in legacy mode, only obvious bugs will be fixed. Options
+like \fI\-l\fR (to list devices) are broken in recent versions of
+Linux (e.g. 2.6 series and later); the lsscsi(8) utility can be used
+instead. Also mode pages are not being updated as http://www.t10.org
+adds and modifies mode page fields. Those interested in SCSI mode pages
+may find the
 .B sdparm
-utility easier use, especially for changing parameters. Also the author
-considers this utility legacy so the mode pages are not being updated
-as http://www.t10.org adds and modifies mode page fields.
+utility more up to date and easier use, especially for changing parameters.
 .PP
 Four sets of values are maintained by a SCSI device for each mode
 page: current (active), default (manufacturer's supplied values),
@@ -113,7 +116,9 @@ Display the response to a standard INQUIRY command.
 Access the Informational Exceptions mode page.
 .TP
 \fB\-l\fR
-List known SCSI devices on the system.
+Deprecated. Only use in old versions of Linux (e.g. 2.4 and
+earlier). Please use lsscsi(8) in the Linux 2.6 series and
+later. List known SCSI devices on the system.
 .TP
 \fB\-n\fR
 Access information in the Notch and Partition mode page.
@@ -147,11 +152,11 @@ page 0 which, if present, is last. Page 0 is vendor specific and not
 necessarily in mode page format. Alternatively hex values can be given for
 both \fIPN\fR and \fISPN\fR (both prefixed by '0x').
 .TP
-\fB\-t\fR
-Trace commands (for debugging). When used once SCSI commands are shown
-(in hex) and any errors from these SCSI commands are spelt out (i.e.
-with a decoded and raw sense buffer). When used twice, the additional
-data sent with mode select and the response from mode sense are
+\fB\-T\fR
+Trace commands to obtain more verbose output (for debugging). When used once
+SCSI commands are shown (in hex) and any errors from these SCSI commands are
+spelt out (i.e.  with a decoded and raw sense buffer). When used twice, the
+additional data sent with mode select and the response from mode sense are
 shown (in hex).
 .TP
 \fB\-u\fR \fIPN\fR[,\fISPN\fR]
@@ -282,7 +287,7 @@ hex (mode page index in the first column and the corresponding byte
 value in the second column) use "\-u 0xa". Mode pages (subpage code == 0)
 start at index position 2 while subpages start at index position 4.
 If the "\-Xu ..." option is used then a list a hex values each value
-prefixed by "@" is output. Mode (sub)page values can then be modified with
+prefixed by "@" is output. Mode (sub)page values can then be modified
 with the "\-RXu ..." option.
 .PP
 .SH RESTRICTIONS
@@ -316,5 +321,5 @@ version 2.25 of sginfo.
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
-.B scsiinfo(internet); sg_modes, sg_inq, sg_vpd (sg3_utils),
+.B lsscsi(lsscsi), scsiinfo(internet); sg_modes, sg_inq, sg_vpd (sg3_utils),
 .B sdparm(sdparm)

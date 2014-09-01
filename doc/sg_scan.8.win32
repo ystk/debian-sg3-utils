@@ -1,4 +1,4 @@
-.TH SG_SCAN "8" "February 2010" "sg3_utils\-1.29" SG3_UTILS
+.TH SG_SCAN "8" "December 2012" "sg3_utils\-1.35" SG3_UTILS
 .SH NAME
 sg_scan \- scan storage devices and map to volume names
 .SH SYNOPSIS
@@ -28,10 +28,10 @@ sometimes rediscovered).
 Some storage devices have a SCSI lower level device name which starts
 with a SCSI (pseudo) adapter name of the form "SCSI<n>:". To this is added
 sub\-addressing in the form of a "bus" number, a "target" identifier and
-a "lun" (logical unit number). The "bus" number is also known as a "PathId".
+a LUN (Logical Unit Number). The "bus" number is also known as a "PathId".
 These components are combined by the utility to make a device name of the
 form: "SCSI<n>:<bus>,<target>,<lun>". This utility allows the
-trailing ",<lun>" to be omitted in which case a lun of zero is assumed. This
+trailing ",<lun>" to be omitted in which case a LUN of zero is assumed. This
 lower level device name cannot often be used directly since Windows blocks
 attempts to use it if a class driver has "claimed" the device. There are
 SCSI device types (e.g. Automation/Drive interface type) for which there is
@@ -122,28 +122,28 @@ recognised by Windows.
 .br
 PD0     [C]     FUJITSU   MHY2160BH         0000  
 .br
-PD1     [DF]    WD        2500BEV External  1.05  WD-WXE90     
+PD1     [DF]    WD        2500BEV External  1.05  WD\-WXE90     
 .br
 CDROM0  [E]     MATSHITA DVD/CDRW UJDA775  CB03
 .PP
 Now request bus types as well. BTW That is a SATA disk holding volume C:
 and there is a "Sata" bus type.
 .PP
-  # sg_scan -b
+  # sg_scan \-b
 .br
 PD0     [C]     <Ata  >  FUJITSU   MHY2160BH         0000  
 .br
-PD1     [DF]    <Usb  >  WD        2500BEV External  1.05  WD-WXE90
+PD1     [DF]    <Usb  >  WD        2500BEV External  1.05  WD\-WXE90
 .br
 CDROM0  [E]     <Atapi>  MATSHITA DVD/CDRW UJDA775  CB03
 .PP
 Now request a SCSI adapter scan as well.
 .PP
-  # sg_scan -b -s
+  # sg_scan \-b \-s
 .br
 PD0     [C]     <Ata  >  FUJITSU   MHY2160BH         0000  
 .br
-PD1     [DF]    <Usb  >  WD        2500BEV External  1.05  WD-WXE90     
+PD1     [DF]    <Usb  >  WD        2500BEV External  1.05  WD\-WXE90     
 .br
 CDROM0  [E]     <Atapi>  MATSHITA DVD/CDRW UJDA775  CB03  
 .br
@@ -159,7 +159,7 @@ the sg3_utils(8) man page.
 .SH AUTHORS
 Written by D. Gilbert
 .SH COPYRIGHT
-Copyright \(co 2006-2010 Douglas Gilbert
+Copyright \(co 2006\-2012 Douglas Gilbert
 .br
 This software is distributed under a FreeBSD license. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

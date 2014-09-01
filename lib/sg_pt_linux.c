@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2005-2011 Douglas Gilbert.
+ * Copyright (c) 2005-2013 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
  */
 
-/* sg_pt_linux version 1.15 20100827 */
+/* sg_pt_linux version 1.20 20131014 */
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,10 @@ static const char * linux_host_bytes[] = {
     "DID_OK", "DID_NO_CONNECT", "DID_BUS_BUSY", "DID_TIME_OUT",
     "DID_BAD_TARGET", "DID_ABORT", "DID_PARITY", "DID_ERROR",
     "DID_RESET", "DID_BAD_INTR", "DID_PASSTHROUGH", "DID_SOFT_ERROR",
-    "DID_IMM_RETRY", "DID_REQUEUE"
+    "DID_IMM_RETRY", "DID_REQUEUE" /* 0xd */,
+    "DID_TRANSPORT_DISRUPTED", "DID_TRANSPORT_FAILFAST",
+    "DID_TARGET_FAILURE" /* 0x10 */,
+    "DID_NEXUS_FAILURE (reservation conflict)",
 };
 
 #define LINUX_HOST_BYTES_SZ \
@@ -75,7 +79,7 @@ static const char * linux_driver_suggests[] = {
 #define SG_LIB_DRIVER_MASK      DRIVER_MASK
 #define SG_LIB_SUGGEST_MASK     SUGGEST_MASK
 #define SG_LIB_DRIVER_SENSE    DRIVER_SENSE
- 
+
 
 
 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -248,7 +252,7 @@ set_scsi_pt_tag(struct sg_pt_base * vp, uint64_t tag)
     struct sg_pt_linux_scsi * ptp = &vp->impl;
 
     ++ptp->in_err;
-    tag = tag;                  /* dummy to silence compiler */
+    if (tag) { ; }     /* unused, suppress warning */
 }
 
 /* Note that task management function codes are transport specific */
@@ -258,7 +262,7 @@ set_scsi_pt_task_management(struct sg_pt_base * vp, int tmf_code)
     struct sg_pt_linux_scsi * ptp = &vp->impl;
 
     ++ptp->in_err;
-    tmf_code = tmf_code;        /* dummy to silence compiler */
+    if (tmf_code) { ; }     /* unused, suppress warning */
 }
 
 void
@@ -267,8 +271,8 @@ set_scsi_pt_task_attr(struct sg_pt_base * vp, int attribute, int priority)
     struct sg_pt_linux_scsi * ptp = &vp->impl;
 
     ++ptp->in_err;
-    attribute = attribute;      /* dummy to silence compiler */
-    priority = priority;        /* dummy to silence compiler */
+    if (attribute) { ; }     /* unused, suppress warning */
+    if (priority) { ; }      /* unused, suppress warning */
 }
 
 #ifndef SG_FLAG_Q_AT_TAIL
@@ -403,6 +407,9 @@ get_scsi_pt_os_err(const struct sg_pt_base * vp)
     return ptp->os_err;
 }
 
+/* Returns b which will contain a null char terminated string (if
+ * max_b_len > 0). That string should decode Linux driver and host
+ * status values. */
 char *
 get_scsi_pt_transport_err_str(const struct sg_pt_base * vp, int max_b_len,
                               char * b)
@@ -413,14 +420,16 @@ get_scsi_pt_transport_err_str(const struct sg_pt_base * vp, int max_b_len,
     int n, m;
     char * cp = b;
     int driv, sugg;
-    const char * driv_cp = "invalid";
-    const char * sugg_cp = "invalid";
+    const char * driv_cp = "unknown";
+    const char * sugg_cp = "unknown";
 
+    if (max_b_len < 1)
+        return b;
     m = max_b_len;
     n = 0;
     if (hs) {
         if ((hs < 0) || (hs >= LINUX_HOST_BYTES_SZ))
-            n = snprintf(cp, m, "Host_status=0x%02x is invalid\n", hs);
+            n = snprintf(cp, m, "Host_status=0x%02x is unknown\n", hs);
         else
             n = snprintf(cp, m, "Host_status=0x%02x [%s]\n", hs,
                          linux_host_bytes[hs]);
@@ -477,14 +486,22 @@ get_scsi_pt_os_err_str(const struct sg_pt_base * vp, int max_b_len, char * b)
  * do_scsi_pt_v3() transfers the input data into a v3 structure and
  * then the output data is transferred back into a sg v4 structure.
  * That implementation detail could change in the future.
+ *
+ * [20120806] Only use MAJOR() macro in kdev_t.h if that header file is
+ * available and major() macro [N.B. lower case] is not available.
  */
 
 
 #include <linux/types.h>
 #include <linux/bsg.h>
 
+#ifdef major
+#define SG_DEV_MAJOR major
+#else
 #ifdef HAVE_LINUX_KDEV_T_H
 #include <linux/kdev_t.h>
+#endif
+#define SG_DEV_MAJOR MAJOR  /* MAJOR() macro faulty if > 255 minors */
 #endif
 
 
@@ -744,8 +761,8 @@ set_scsi_pt_flags(struct sg_pt_base * vp, int flags)
     struct sg_pt_linux_scsi * ptp = &vp->impl;
 
     /* default action of bsg (sg v4) is QUEUE_AT_HEAD */
-    if (SCSI_PT_FLAGS_QUEUE_AT_TAIL & flags) 
-        ptp->io_hdr.flags |= BSG_FLAG_Q_AT_TAIL; 
+    if (SCSI_PT_FLAGS_QUEUE_AT_TAIL & flags)
+        ptp->io_hdr.flags |= BSG_FLAG_Q_AT_TAIL;
     if (SCSI_PT_FLAGS_QUEUE_AT_HEAD & flags)
         ptp->io_hdr.flags &= ~BSG_FLAG_Q_AT_TAIL;
 }
@@ -791,7 +808,9 @@ get_scsi_pt_transport_err(const struct sg_pt_base * vp)
     return ptp->io_hdr.transport_status;
 }
 
-/* Combine driver and transport (called "host" in linux kernel) statuses */
+/* Returns b which will contain a null char terminated string (if
+ * max_b_len > 0). Combined driver and transport (called "host" in Linux
+ * kernel) statuses */
 char *
 get_scsi_pt_transport_err_str(const struct sg_pt_base * vp, int max_b_len,
                               char * b)
@@ -805,6 +824,8 @@ get_scsi_pt_transport_err_str(const struct sg_pt_base * vp, int max_b_len,
     const char * driv_cp = "invalid";
     const char * sugg_cp = "invalid";
 
+    if (max_b_len < 1)
+        return b;
     m = max_b_len;
     n = 0;
     if (hs) {
@@ -889,7 +910,7 @@ do_scsi_pt_v3(struct sg_pt_linux_scsi * ptp, int fd, int time_secs,
     /* convert v4 to v3 header */
     v3_hdr.interface_id = 'S';
     v3_hdr.dxfer_direction = SG_DXFER_NONE;
-    v3_hdr.cmdp = (void *)(long)ptp->io_hdr.request;
+    v3_hdr.cmdp = (unsigned char *)(long)ptp->io_hdr.request;
     v3_hdr.cmd_len = (unsigned char)ptp->io_hdr.request_len;
     if (ptp->io_hdr.din_xfer_len > 0) {
         if (ptp->io_hdr.dout_xfer_len > 0) {
@@ -906,7 +927,7 @@ do_scsi_pt_v3(struct sg_pt_linux_scsi * ptp, int fd, int time_secs,
         v3_hdr.dxfer_direction =  SG_DXFER_TO_DEV;
     }
     if (ptp->io_hdr.response && (ptp->io_hdr.max_response_len > 0)) {
-        v3_hdr.sbp = (void *)(long)ptp->io_hdr.response;
+        v3_hdr.sbp = (unsigned char *)(long)ptp->io_hdr.response;
         v3_hdr.mx_sb_len = (unsigned char)ptp->io_hdr.max_response_len;
     }
     v3_hdr.pack_id = (int)ptp->io_hdr.spare_in;
@@ -969,15 +990,9 @@ do_scsi_pt(struct sg_pt_base * vp, int fd, int time_secs, int verbose)
                         strerror(ptp->os_err), ptp->os_err);
             return -ptp->os_err;
         }
-#ifdef HAVE_LINUX_KDEV_T_H
         if (! S_ISCHR(a_stat.st_mode) ||
-            (bsg_major != (int)MAJOR(a_stat.st_rdev)))
+            (bsg_major != (int)SG_DEV_MAJOR(a_stat.st_rdev)))
             return do_scsi_pt_v3(ptp, fd, time_secs, verbose);
-#else
-        if (! S_ISCHR(a_stat.st_mode) ||
-            (bsg_major != (int)major(a_stat.st_rdev)))
-            return do_scsi_pt_v3(ptp, fd, time_secs, verbose);
-#endif
     }
 
     if (! ptp->io_hdr.request) {

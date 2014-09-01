@@ -1,6 +1,7 @@
 The origing tarball was downloaded from http://sg.danny.cz/sg/p/
-and was then re-packed into .tar.gz format to make it play nicely with
-git-import-orig
+and then added to the git packaging repository using the following
+command:
+git import-orig --filter=debian sg3_utils-x.yy.tar.xz
 
 ===
 

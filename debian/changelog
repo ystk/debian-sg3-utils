@@ -1,3 +1,24 @@
+sg3-utils (1.38-1) unstable; urgency=medium
+
+  * [d956539] Use dh-autoreconf for build.
+    Thanks to Colin Watson (Closes: #732541)
+  * [2fc0300] Imported Upstream version 1.38
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Thu, 03 Apr 2014 12:07:32 +0530
+
+sg3-utils (1.36-1) unstable; urgency=low
+
+  * [69e9dac] Imported Upstream version 1.36
+  * [cb75936] Add debian compat, level 7
+  * [68fed25] update README.source
+  * [3c724fc] Add build-dep autotools-dev
+  * [e4b9fdd] add destdir to install path
+  * [7cfff11] Simplify build with debhelper
+  * [f9a7540] Update symbols for 1.36 release
+  * [7b0b48d] Enable hardening build
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Sun, 23 Jun 2013 16:08:01 +0530
+
 sg3-utils (1.33-1) unstable; urgency=low
 
   * [d05522e] Fix installation path.

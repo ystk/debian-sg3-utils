@@ -1,3 +1,16 @@
+/*
+ *  Copyright (C) 2000-2013 D. Gilbert
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This program outputs information provided by a SCSI MODE SENSE command.
+ *  Does 10 byte MODE SENSE commands by default, Trent Piepho added a "-6"
+ *  switch for force 6 byte mode sense commands.
+ *  This utility cannot modify mode pages. See the sdparm utility for that.
+ */
+
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -12,21 +25,7 @@
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 
-/*
-*  Copyright (C) 2000-2011 D. Gilbert
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-
-   This program outputs information provided by a SCSI MODE SENSE command.
-   Does 10 byte MODE SENSE commands by default, Trent Piepho added a "-6"
-   switch for force 6 byte mode sense commands.
-   This utility cannot modify mode pages. See the sdparm utility for that.
-
-*/
-
-static char * version_str = "1.37 20111113";
+static const char * version_str = "1.42 20130604";
 
 #define DEF_ALLOC_LEN (1024 * 4)
 #define DEF_6_ALLOC_LEN 252
@@ -119,8 +118,8 @@ usage()
            "sense (10) cdb)\n"
            "    --maxlen=LEN|-m LEN    max response length (allocation "
            "length in cdb)\n"
-           "                           (def: 0 -> 4096 or 252 (for MODE SENSE 6) "
-           "bytes)\n"
+           "                           (def: 0 -> 4096 or 252 (for MODE "
+           "SENSE 6) bytes)\n"
            "    --page=PG|-p PG    page code to fetch (def: 63)\n"
            "    --page=PG,SPG|-p PG,SPG\n"
            "                       page code and subpage code to fetch "
@@ -133,7 +132,8 @@ usage()
            "SENSE(10)\n"
            "    --verbose|-v    increase verbosity\n"
            "    --version|-V    output version string then exit\n\n"
-           "Performs a SCSI MODE SENSE (10 or 6) command\n");
+           "Performs a SCSI MODE SENSE (10 or 6) command. To access and "
+           "possibly change\nmode page fields see the sdparm utility.\n");
 }
 
 static void
@@ -539,7 +539,7 @@ static struct page_code_desc pc_desc_disk[] = {
     {0xb, 0x0, "Medium types supported (obsolete)"},
     {0xc, 0x0, "Notch and partition (obsolete)"},
     {0xd, 0x0, "Power condition (obsolete, moved to 0x1a)"},
-    {0x10, 0x0, "XOR control"},
+    {0x10, 0x0, "XOR control"}, /* obsolete in sbc3r32 */
     {0x1a, 0xf1, "ATA Power condition"},
     {0x1c, 0x1, "Background control"},
     {0x1c, 0x2, "Logical block provisioning"},
@@ -867,7 +867,7 @@ examine_pages(int sg_fd, int inq_pdt, int inq_byte6,
     for (header = 0, k = 0; k < PG_CODE_MAX; ++k) {
         if (optsp->do_six) {
             res = sg_ll_mode_sense6(sg_fd, 0, 0, k, 0, rbuf, mresp_len,
-                                    0, optsp->do_verbose);
+                                    1, optsp->do_verbose);
             if (SG_LIB_CAT_INVALID_OP == res) {
                 fprintf(stderr, ">>>>>> try again without the '-6' "
                         "switch for a 10 byte MODE SENSE command\n");
@@ -992,7 +992,7 @@ main(int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
         if (opts.maxlen > DEF_ALLOC_LEN) {
-            malloc_rsp_buff = malloc(opts.maxlen);
+            malloc_rsp_buff = (unsigned char *)malloc(opts.maxlen);
             if (NULL == malloc_rsp_buff) {
                 fprintf(stderr, "Unable to malloc maxlen=%d bytes\n",
                         opts.maxlen);
@@ -1072,7 +1072,7 @@ main(int argc, char * argv[])
         }
     }
 
-    memset(rsp_buff, 0, sizeof(rsp_buff));
+    memset(rsp_buff, 0, rsp_buff_size);
     if (opts.do_six) {
         res = sg_ll_mode_sense6(sg_fd, opts.do_dbd, opts.page_control,
                                 opts.pg_code, opts.subpg_code, rsp_buff,

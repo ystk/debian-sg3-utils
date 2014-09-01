@@ -1,4 +1,4 @@
-AC_INIT(sg3_utils, 1.33, dgilbert@interlog.com)
+AC_INIT(sg3_utils, 1.38, dgilbert@interlog.com)
 
 AM_INIT_AUTOMAKE
 AM_MAINTAINER_MODE
@@ -24,6 +24,9 @@ AC_CHECK_FUNCS(getopt_long,
 	       GETOPT_O_FILES='',
 	       GETOPT_O_FILES='getopt_long.o')
 AC_CHECK_FUNCS(posix_fadvise)
+AC_CHECK_FUNCS(posix_memalign)
+AC_CHECK_FUNCS(sysconf)
+AC_CHECK_FUNCS(lseek64)
 AC_SUBST(GETOPT_O_FILES)
 
 AC_CANONICAL_HOST
@@ -66,14 +69,18 @@ AM_CONDITIONAL(OS_SOLARIS, [echo $host_os | grep '^solaris' > /dev/null])
 AM_CONDITIONAL(OS_WIN32_MINGW, [echo $host_os | grep '^mingw' > /dev/null])
 AM_CONDITIONAL(OS_WIN32_CYGWIN, [echo $host_os | grep '^cygwin' > /dev/null])
 
-AC_ARG_ENABLE([no-linux-bsg],
-  AC_HELP_STRING([--enable-no-linux-bsg], [ignore linux bsg (sgv4) if present]),
-  AC_DEFINE_UNQUOTED(IGNORE_LINUX_BSG, 1, [ignore linux bsg], )
-)
+AC_ARG_ENABLE([linuxbsg],
+  AC_HELP_STRING([--disable-linuxbsg], [ignore linux bsg (sgv4) if present]),
+  [AC_DEFINE_UNQUOTED(IGNORE_LINUX_BSG, 1, [ignore linux bsg], )], [])
 
 AC_ARG_ENABLE([win32-spt-direct],
   AC_HELP_STRING([--enable-win32-spt-direct], [enable Win32 SPT Direct]),
   AC_DEFINE_UNQUOTED(WIN32_SPT_DIRECT, 1, [enable Win32 SPT Direct], )
 )
 
-AC_OUTPUT(Makefile include/Makefile lib/Makefile src/Makefile doc/Makefile)
+AC_ARG_ENABLE([scsistrings],
+  [AS_HELP_STRING([--disable-scsistrings],
+		  [Disable full SCSI sense strings])],
+  [], [AC_DEFINE_UNQUOTED(SG_SCSI_STRINGS, 1, [full SCSI sense strings], )])
+
+AC_OUTPUT(Makefile include/Makefile lib/Makefile src/Makefile doc/Makefile scripts/Makefile)

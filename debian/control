@@ -3,11 +3,11 @@ Section: admin
 Priority: optional
 Maintainer: Ritesh Raj Sarraf <rrs@debian.org>
 Uploaders: Jonathan McDowell <noodles@earth.li>
-Build-Depends: debhelper (>> 7), libtool, libcam-dev [kfreebsd-any]
+Build-Depends: debhelper (>= 7.0.50~), libtool, libcam-dev [kfreebsd-any], dh-autoreconf, dpkg-dev (>= 1.16.1~)
 Standards-Version: 3.9.2
 Homepage: http://sg.danny.cz/sg/
-Vcs-Git: git://git.debian.org/collab-maint/sg3-utils.git
-Vcs-Browser: http://git.debian.org/?p=collab-maint/sg3-utils.git
+Vcs-Git: git://anonscm.debian.org/collab-maint/sg3-utils.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/sg3-utils.git
 
 Package: sg3-utils
 Architecture: any

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2011 Douglas Gilbert.
+ * Copyright (c) 2004-2013 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -27,7 +27,7 @@
 
 */
 
-static char * version_str = "0.37 20110206";    /* mmc6r02 */
+static const char * version_str = "0.38 20130507";    /* mmc6r02 */
 
 #define MX_ALLOC_LEN 8192
 #define NAME_BUFF_SZ 64
@@ -868,15 +868,15 @@ decode_feature(int feature, unsigned char * ucp, int len)
         num = ucp[5];
         printf("      Profile numbers:\n");
         for (k = 6; (num > 0) && (k < len); --num, k += 2) {
-            printf("        %d\n", 
+            printf("        %d\n",
                    ((unsigned int)ucp[k] << 8) + ucp[k + 1]);
         }
         break;
     default:
-        printf("    Unknown feature [0x%x], version=%d persist=%d, "
-               "current=%d\n", feature, ((ucp[2] >> 2) & 0xf),
-               !!(ucp[2] & 0x2), !!(ucp[2] & 0x1));
-        dStrHex((const char *)ucp, len, 1);
+        fprintf(stderr, "    Unknown feature [0x%x], version=%d persist=%d, "
+                "current=%d\n", feature, ((ucp[2] >> 2) & 0xf),
+                !!(ucp[2] & 0x2), !!(ucp[2] & 0x1));
+        dStrHexErr((const char *)ucp, len, 1);
         break;
     }
 }

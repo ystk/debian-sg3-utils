@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2011 Hannes Reinecke, Christophe Varoqui and Douglas Gilbert.
+* Copyright (c) 2004-2013 Hannes Reinecke, Christophe Varoqui, Douglas Gilbert
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -24,7 +24,7 @@
  * to the given SCSI device.
  */
 
-static char * version_str = "1.3 20111014";
+static const char * version_str = "1.7 20130730";
 
 #define TGT_GRP_BUFF_LEN 1024
 #define MX_ALLOC_LEN (0xc000 + 0x80)
@@ -35,6 +35,28 @@ static char * version_str = "1.3 20111014";
 #define TPGS_STATE_UNAVAILABLE 0x3
 #define TPGS_STATE_OFFLINE 0xe          /* SPC-4 rev 9 */
 #define TPGS_STATE_TRANSITIONING 0xf
+
+/* See also table 306 - Target port group descriptor format in SPC-4 rev 36e */
+#ifndef __cplusplus
+
+static const unsigned char state_sup_mask[] = {
+        [TPGS_STATE_OPTIMIZED]     = 0x01,
+        [TPGS_STATE_NONOPTIMIZED]  = 0x02,
+        [TPGS_STATE_STANDBY]       = 0x04,
+        [TPGS_STATE_UNAVAILABLE]   = 0x08,
+        [TPGS_STATE_OFFLINE]       = 0x40,
+        [TPGS_STATE_TRANSITIONING] = 0x80,
+};
+
+#else
+
+// C++ does not support designated initializers
+static const unsigned char state_sup_mask[] = {
+    0x1, 0x2, 0x4, 0x8, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x40, 0x80,
+};
+
+#endif  /* C or C++ ? */
 
 #define VPD_DEVICE_ID  0x83
 #define DEF_VPD_DEVICE_ID_LEN  252
@@ -139,7 +161,7 @@ decode_target_port(unsigned char * buff, int len, int *d_id, int *d_tpg)
             if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
                 fprintf(stderr, "      << expected binary code_set, target "
                         "port association, length 4>>\n");
-                dStrHex((const char *)ip, i_len, 0);
+                dStrHexErr((const char *)ip, i_len, 0);
                 break;
             }
             *d_id = ((ip[2] << 8) | ip[3]);
@@ -148,7 +170,7 @@ decode_target_port(unsigned char * buff, int len, int *d_id, int *d_tpg)
             if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
                 fprintf(stderr, "      << expected binary code_set, target "
                         "port association, length 4>>\n");
-                dStrHex((const char *)ip, i_len, 0);
+                dStrHexErr((const char *)ip, i_len, 0);
                 break;
             }
             *d_tpg = ((ip[2] << 8) | ip[3]);
@@ -207,7 +229,7 @@ transition_tpgs_states(struct tgtgrp *tgtState, int numgrp, int portgroup,
           return 1;
      }
 
-     if (!( (1 << newstate) & tgtState[i].valid )) {
+     if (!( state_sup_mask[newstate] & tgtState[i].valid )) {
           printf("Portgroup 0x%02x: Invalid state 0x%x\n",
                  portgroup, newstate);
           return 1;
@@ -284,7 +306,7 @@ build_port_arr(const char * inp, int * port_arr, int * port_arr_len,
         v = sg_get_num_nomult(lcp);
         if (-1 != v) {
             port_arr[k] = v;
-            cp = strchr(lcp, ',');
+            cp = (char *)strchr(lcp, ',');
             if (NULL == cp)
                 break;
             lcp = cp + 1;
@@ -369,7 +391,7 @@ build_state_arr(const char * inp, int * state_arr, int * state_arr_len,
                 return 1;
             }
         }
-        cp = strchr(lcp, ',');
+        cp = (char *)strchr(lcp, ',');
         if (NULL == cp)
             break;
         lcp = cp + 1;
@@ -550,20 +572,21 @@ main(int argc, char * argv[])
                         "INQUIRY response\n");
                 if (verbose) {
                     fprintf(stderr, "First 32 bytes of bad response\n");
-                    dStrHex((const char *)rsp_buff, 32, 0);
+                    dStrHexErr((const char *)rsp_buff, 32, 0);
                 }
                 return SG_LIB_CAT_MALFORMED;
             }
             if (report_len > MX_ALLOC_LEN) {
-                fprintf(stderr, "response length too long: %d > %d\n", report_len,
-                        MX_ALLOC_LEN);
+                fprintf(stderr, "response length too long: %d > %d\n",
+                        report_len, MX_ALLOC_LEN);
                 return SG_LIB_CAT_MALFORMED;
             } else if (report_len > DEF_VPD_DEVICE_ID_LEN) {
                 if (sg_ll_inquiry(sg_fd, 0, 1, VPD_DEVICE_ID, rsp_buff,
                                   report_len, 1, verbose))
                     return SG_LIB_CAT_OTHER;
             }
-            decode_target_port(rsp_buff + 4, report_len - 4, &relport, &portgroup);
+            decode_target_port(rsp_buff + 4, report_len - 4, &relport,
+                               &portgroup);
             printf("Device is at port Group 0x%02x, relative port 0x%02x\n",
                    portgroup, relport);
         }
@@ -571,8 +594,9 @@ main(int argc, char * argv[])
         memset(reportTgtGrpBuff, 0x0, sizeof(reportTgtGrpBuff));
         /* trunc = 0; */
 
-        res = sg_ll_report_tgt_prt_grp(sg_fd, reportTgtGrpBuff,
-                                sizeof(reportTgtGrpBuff), 1, verbose);
+        res = sg_ll_report_tgt_prt_grp2(sg_fd, reportTgtGrpBuff,
+                                        sizeof(reportTgtGrpBuff), 0, 1,
+                                        verbose);
         ret = res;
         if (0 == res) {
             report_len = (reportTgtGrpBuff[0] << 24) +
@@ -593,7 +617,7 @@ main(int argc, char * argv[])
                 printf("Report list length = %d\n", report_len);
             if (hex) {
                 if (verbose)
-                    fprintf(stderr, "\nOutput response in hex:\n");
+                    printf("\nOutput response in hex:\n");
                 dStrHex((const char *)reportTgtGrpBuff, report_len, 1);
                 goto err_out;
             }
@@ -618,7 +642,8 @@ main(int argc, char * argv[])
                 off = 8 + tgt_port_count * 4;
             }
         } else if (SG_LIB_CAT_INVALID_OP == res)
-            fprintf(stderr, "Report Target Port Groups command not supported\n");
+            fprintf(stderr, "Report Target Port Groups command not "
+                    "supported\n");
         else if (SG_LIB_CAT_ILLEGAL_REQ == res)
             fprintf(stderr, "bad field in Report Target Port Groups cdb "
                     "including unsupported service action\n");

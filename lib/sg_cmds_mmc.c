@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2010 Douglas Gilbert.
+ * Copyright (c) 2008-2013 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -22,7 +22,7 @@
 #endif
 
 
-#define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
+#define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
 
 #define DEF_PT_TIMEOUT 60       /* 60 seconds */
 
@@ -185,7 +185,7 @@ sg_ll_get_config(int sg_fd, int rt, int starting, void * resp,
             len = (ret < len) ? ret : len;
             fprintf(sg_warnings_strm, "    get configuration: response%s\n",
                     (len > 256 ? ", first 256 bytes" : ""));
-            dStrHex((const char *)resp, (len > 256 ? 256 : len), -1);
+            dStrHexErr((const char *)resp, (len > 256 ? 256 : len), -1);
         }
         ret = 0;
     }
@@ -280,7 +280,7 @@ sg_ll_get_performance(int sg_fd, int data_type, unsigned int starting_lba,
             len = (ret < len) ? ret : len;
             fprintf(sg_warnings_strm, "    get performance:: response%s\n",
                     (len > 256 ? ", first 256 bytes" : ""));
-            dStrHex((const char *)resp, (len > 256 ? 256 : len), -1);
+            dStrHexErr((const char *)resp, (len > 256 ? 256 : len), -1);
         }
         ret = 0;
     }
@@ -316,7 +316,7 @@ sg_ll_set_streaming(int sg_fd, int type, void * paramp, int param_len,
         if ((verbose > 1) && paramp && param_len) {
             fprintf(sg_warnings_strm, "    set streaming "
                     "parameter list:\n");
-            dStrHex((const char *)paramp, param_len, -1);
+            dStrHexErr((const char *)paramp, param_len, -1);
         }
     }
 

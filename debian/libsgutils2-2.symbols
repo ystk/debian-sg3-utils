@@ -2,6 +2,8 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  clear_scsi_pt_obj@Base 1.27
  construct_scsi_pt_obj@Base 1.27
  dStrHex@Base 1.27
+ dStrHexErr@Base 1.38
+ dStrHexStr@Base 1.38
  dWordHex@Base 1.27
  destruct_scsi_pt_obj@Base 1.27
  do_scsi_pt@Base 1.27
@@ -53,6 +55,7 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_get_scsi_status_str@Base 1.27
  sg_get_sense_filemark_eom_ili@Base 1.27
  sg_get_sense_info_fld@Base 1.27
+ sg_get_sense_key@Base 1.38
  sg_get_sense_key_str@Base 1.27
  sg_get_sense_progress_fld@Base 1.27
  sg_get_sense_str@Base 1.27
@@ -66,7 +69,10 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_lib_pdt_strs@Base 1.27
  sg_lib_pr_in_arr@Base 1.28
  sg_lib_pr_out_arr@Base 1.28
+ sg_lib_read_buff_arr@Base 1.36
+ sg_lib_rec_copy_sa_arr@Base 1.36
  sg_lib_sense_key_desc@Base 1.27
+ sg_lib_serv_bidi_arr@Base 1.36
  sg_lib_serv_in12_arr@Base 1.27
  sg_lib_serv_in16_arr@Base 1.27
  sg_lib_serv_out12_arr@Base 1.27
@@ -75,7 +81,11 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_lib_variable_length_arr@Base 1.27
  sg_lib_version@Base 1.27
  sg_lib_version_str@Base 1.27
+ sg_lib_write_buff_arr@Base 1.36
+ sg_lib_xcopy_sa_arr@Base 1.36
+ sg_ll_3party_copy_out@Base 1.38
  sg_ll_ata_pt@Base 1.27
+ sg_ll_extended_copy@Base 1.36
  sg_ll_format_unit@Base 1.27
  sg_ll_get_config@Base 1.27
  sg_ll_get_lba_status@Base 1.28
@@ -99,10 +109,12 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_ll_readcap_10@Base 1.27
  sg_ll_readcap_16@Base 1.27
  sg_ll_reassign_blocks@Base 1.27
+ sg_ll_receive_copy_results@Base 1.36
  sg_ll_receive_diag@Base 1.27
  sg_ll_report_id_info@Base 1.27
  sg_ll_report_luns@Base 1.27
  sg_ll_report_referrals@Base 1.30
+ sg_ll_report_tgt_prt_grp2@Base 1.36
  sg_ll_report_tgt_prt_grp@Base 1.27
  sg_ll_request_sense@Base 1.27
  sg_ll_send_diag@Base 1.27

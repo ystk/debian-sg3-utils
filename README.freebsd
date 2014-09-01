@@ -13,6 +13,7 @@ for FreeBSD.
 Supported Utilities
 ===================
 Here is a list of utilities that have been ported:
+    sg_compare_and_write
     sg_decode_sense
     sg_format
     sg_get_config
@@ -133,5 +134,5 @@ utilities.
 
 
 
-Doug Gilbert
-17th January 2012
+Douglas Gilbert
+14th January 2013

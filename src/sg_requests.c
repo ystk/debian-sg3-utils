@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2011 Douglas Gilbert.
+ * Copyright (c) 2004-2013 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -25,7 +25,7 @@
  * This program issues the SCSI command REQUEST SENSE to the given SCSI device.
  */
 
-static char * version_str = "1.23 20111101";
+static const char * version_str = "1.24 20130730";
 
 #define MAX_REQS_RESP_LEN 255
 #define DEF_REQS_RESP_LEN 252
@@ -242,7 +242,7 @@ main(int argc, char * argv[])
             resp_len = requestSenseBuff[7] + 8;
             if (verbose > 1) {
                 fprintf(stderr, "Parameter data in hex\n");
-                dStrHex((const char *)requestSenseBuff, resp_len, 1);
+                dStrHexErr((const char *)requestSenseBuff, resp_len, 1);
             }
             progress = -1;
             sg_get_sense_progress_fld(requestSenseBuff, resp_len,
@@ -257,7 +257,7 @@ main(int argc, char * argv[])
             } else
                 printf("Progress indication: %d.%02d%% done\n",
                        (progress * 100) / 65536,
-                       ((progress * 100) % 65536) / 655);
+                       ((progress * 100) % 65536) / 656);
         }
         goto finish;
     }
@@ -288,7 +288,7 @@ main(int argc, char * argv[])
                 sg_print_sense(NULL, requestSenseBuff, resp_len, 0);
                 if (verbose > 1) {
                     fprintf(stderr, "\nParameter data in hex\n");
-                    dStrHex((const char *)requestSenseBuff, resp_len, 1);
+                    dStrHexErr((const char *)requestSenseBuff, resp_len, 1);
                 }
             }
             continue;
