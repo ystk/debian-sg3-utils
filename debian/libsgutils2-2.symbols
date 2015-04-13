@@ -43,6 +43,7 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_err_category_new@Base 1.27
  sg_err_category_sense@Base 1.27
  sg_get_asc_ascq_str@Base 1.27
+ sg_get_category_sense_str@Base 1.39
  sg_get_command_name@Base 1.27
  sg_get_command_size@Base 1.27
  sg_get_llnum@Base 1.27
@@ -71,6 +72,7 @@ libsgutils2.so.2 libsgutils2-2 #MINVER#
  sg_lib_pr_out_arr@Base 1.28
  sg_lib_read_buff_arr@Base 1.36
  sg_lib_rec_copy_sa_arr@Base 1.36
+ sg_lib_sanitize_sa_arr@Base 1.39
  sg_lib_sense_key_desc@Base 1.27
  sg_lib_serv_bidi_arr@Base 1.36
  sg_lib_serv_in12_arr@Base 1.27

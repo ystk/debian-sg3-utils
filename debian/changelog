@@ -1,3 +1,19 @@
+sg3-utils (1.39-1) unstable; urgency=medium
+
+  * [a3a22b2] Imported Upstream version 1.39
+  * [c1a14cb] Update symbols list
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Mon, 29 Sep 2014 13:25:14 +0530
+
+sg3-utils (1.38-2) unstable; urgency=medium
+
+  * [c9b57d9] Ship the rescan-scsi-bus.sh script (Closes: #758926)
+    Note: The scsitools package also ships a rescan-scsi-bus script.
+    To make the files not overwrite, rescan-scsi-bus.sh script is
+    shipped into /usr/bin/
+
+ -- Ritesh Raj Sarraf <rrs@debian.org>  Wed, 27 Aug 2014 15:32:26 +0530
+
 sg3-utils (1.38-1) unstable; urgency=medium
 
   * [d956539] Use dh-autoreconf for build.
